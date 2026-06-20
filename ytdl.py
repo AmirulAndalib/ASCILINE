@@ -22,6 +22,7 @@ Robustness contract (why this file is more than a one-liner):
   is left untouched: it only ever sees clean, canonical mp4s.
 """
 import os
+import re
 import sys
 import json
 import shutil
@@ -29,6 +30,17 @@ import importlib.util
 import subprocess
 
 _URL_HINTS = ("http://", "https://", "youtube.com", "youtu.be")
+
+# YouTube video ids are exactly 11 chars of [A-Za-z0-9_-]. Match the id wherever
+# it appears across the common URL shapes so a cached file can be found without
+# touching the network. Anything else (other yt-dlp sources, odd URLs) returns
+# None and falls through to the normal probe+download path.
+_YT_ID = r"([A-Za-z0-9_-]{11})"
+_YT_ID_PATTERNS = (
+    re.compile(r"[?&]v=" + _YT_ID),            # watch?v=ID  (also with &list=...)
+    re.compile(r"youtu\.be/" + _YT_ID),        # youtu.be/ID
+    re.compile(r"/(?:shorts|embed|live|v)/" + _YT_ID),  # shorts/embed/live/v
+)
 
 # What the engine can open without surprises.
 _OK_VCODEC = "h264"
@@ -61,11 +73,14 @@ def expand_playlist(url: str) -> list[str]:
     Expand a playlist/channel URL into a list of individual video URLs.
 
     Uses `--flat-playlist` so it only reads the index (no per-video download).
+    `--yes-playlist` forces expansion of a `watch?v=...&list=...` URL, which
+    yt-dlp otherwise treats as a single video (queuing only 1 entry).
     Returns ``[url]`` unchanged for a single video, or if expansion fails for
     any reason, so the caller can still attempt a normal single download.
     """
     _require_ytdlp()
-    res = _ytdlp("--flat-playlist", "-J", url, timeout=_PROBE_TIMEOUT)
+    res = _ytdlp("--yes-playlist", "--flat-playlist", "-J", url,
+                 timeout=_PROBE_TIMEOUT)
     if res.returncode != 0 or not res.stdout.strip():
         return [url]
     try:
@@ -93,6 +108,15 @@ def _ytdlp(*args: str, timeout: int = _DL_TIMEOUT) -> subprocess.CompletedProces
         raise RuntimeError(f"yt-dlp timed out after {timeout}s")
 
 
+def _video_id_from_url(url: str) -> str | None:
+    """Extract a YouTube video id from `url` via regex, or None if not recognized."""
+    for pat in _YT_ID_PATTERNS:
+        m = pat.search(url)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _probe_remote(url: str) -> tuple[str, bool]:
     """Return (video_id, is_live) for a single video URL, without downloading."""
     res = _ytdlp("--no-playlist", "--print", "id", "--print", "is_live", url,
@@ -110,14 +134,25 @@ def download(url: str, cache_dir: str = "videos") -> str:
     _require_ytdlp()
     os.makedirs(cache_dir, exist_ok=True)
 
+    # Cheap cache check first: if the id is parseable straight from the URL and a
+    # finalized file already exists, return it without ever hitting YouTube. A
+    # file at `out` is only created by the atomic rename below, so its mere
+    # existence guarantees a complete, already-normalized video — and it could
+    # only have been written after passing the is_live guard, so re-checking is
+    # unnecessary on a hit.
+    quick_id = _video_id_from_url(url)
+    if quick_id:
+        cached = os.path.join(cache_dir, f"{quick_id}.mp4")
+        if os.path.exists(cached):
+            print(f"[YT] cached: {cached}")
+            return cached
+
     video_id, is_live = _probe_remote(url)
     if is_live:
         raise RuntimeError(
             f"{url!r} is a live stream; ASCILINE plays finite videos only")
 
     out = os.path.join(cache_dir, f"{video_id}.mp4")
-    # A file at `out` is only ever created by the atomic rename below, so its
-    # mere existence guarantees a complete, already-normalized video.
     if os.path.exists(out):
         print(f"[YT] cached: {out}")
         return out
