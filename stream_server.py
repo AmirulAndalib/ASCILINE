@@ -52,8 +52,7 @@ async def prefetch_worker():
             loop_opt = getattr(app.state, "loop", False)
             
             if len(queue) > 0:
-                # 1. Bandwidth koruması: EĞER GÜNCEL VİDEO HALA URL İSE (yani iniyorsa),
-                # sıradaki videoyu indirmeye başlama ki güncel video tüm internet hızını kullanıp hemen açılabilsin.
+               #download queque protect
                 current_entry = queue[idx]
                 if ytdl.is_url(current_entry["video"]):
                     await asyncio.sleep(2)
