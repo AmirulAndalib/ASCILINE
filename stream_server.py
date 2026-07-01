@@ -29,6 +29,51 @@ from ascii_video_player2 import VideoDecoder, AsciiMapper
 from codec import encode_frame
 import ytdl
 
+# ── FILTER PALETTES ──────────────────────────────────────────────────────────
+# Named character palettes that the client can switch between at runtime.
+FILTER_PALETTES = {
+    "default": list(" `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@"),
+    "flat":    list(" .:-=+*#%@"),
+    "block":   list(" .+o#@"),
+}
+
+def _build_gray_lut(
+    contrast: float,
+    gamma: float,
+    brightness: float = 0.0,
+    invert: bool = False,
+) -> np.ndarray:
+    """Build a 256-element uint8 LUT that applies brightness, contrast, gamma, invert.
+
+    The LUT is precomputed once per parameter change and applied via
+    cv2.LUT() — a single memcpy-speed table lookup per frame (O(pixels),
+    but effectively free compared to decode/encode).
+
+    Formula per value *v* (in order):
+        1. Brightness: v'   = clip(v + brightness_offset, 0, 255)
+        2. Contrast:   v''  = clip(128 + contrast * (v' - 128), 0, 255)
+        3. Gamma:      v''' = 255 * (v'' / 255) ^ (1 / gamma)
+        4. Invert:     v    = 255 - v'''
+    Returns None if all params are identity (skip LUT call entirely).
+    """
+    lut = np.arange(256, dtype=np.float64)
+    # 1. Brightness — additive shift in the 0-255 space
+    if brightness != 0.0:
+        lut = lut + brightness * 2.55  # -100..+100 → -255..+255
+    np.clip(lut, 0, 255, out=lut)
+    # 2. Contrast (linear stretch around midpoint 128)
+    if contrast != 1.0:
+        lut = 128.0 + contrast * (lut - 128.0)
+        np.clip(lut, 0, 255, out=lut)
+    # 3. Gamma (power curve; values near 1.0 are identity)
+    if gamma != 1.0:
+        lut = 255.0 * np.power(np.maximum(lut, 0) / 255.0, 1.0 / gamma)
+        np.clip(lut, 0, 255, out=lut)
+    # 4. Invert
+    if invert:
+        lut = 255.0 - lut
+    return lut.astype(np.uint8)
+
 _download_locks = {}
 
 async def safe_resolve_video_path(vid: str):
@@ -196,10 +241,25 @@ def load_folder(folder_path: str, default_mode: int, default_vol: int) -> list[d
 def build_queue(args) -> list[dict]:
     """
     Builds the video queue based on argument priority:
-      1. --playlist JSON file
-      2. --folder directory
-      3. Single positional video argument
+      1. --webcam flag
+      2. --playlist JSON file
+      3. --folder directory
+      4. Single positional video argument
     """
+    if args.webcam:
+        print(f"[WEBCAM] Device: {args.webcam_device} | Target FPS: {args.webcam_fps}")
+        default_cols = args.cols if args.cols is not None else (450 if args.pixel else 200)
+        return [{
+            "video": args.webcam_device,
+            "is_webcam": True,
+            "mirror": not args.no_mirror,
+            "fallback_fps": args.webcam_fps,
+            "mode": args.mode,
+            "vol": args.vol,
+            "pixel": args.pixel,
+            "cols": default_cols,
+            "rows": args.rows
+        }]
     if args.playlist:
         print(f"[PLAYLIST] Loading: {args.playlist}")
         items = load_playlist(args.playlist)
@@ -516,9 +576,21 @@ async def websocket_endpoint(websocket: WebSocket):
             print(f"[PLAYING] ({queue_index + 1}/{len(queue)}) {video_path}  "
                   f"mode={render_mode}  pixel={pixel_mode}  vol={entry['vol']}")
 
-            # ── Auto-calculate rows if not specified ──
+            # ── Initialize Decoder & Auto-calculate rows ──
+            is_webcam = entry.get("is_webcam", False)
+            mirror = entry.get("mirror", False)
+            fallback_fps = entry.get("fallback_fps", 0)
+
             try:
-                vid_w, vid_h = get_video_dimensions(video_path)
+                # Initialize decoder with dummy size to fetch dimensions without double-probing
+                decoder = VideoDecoder(
+                    path=video_path,
+                    cols=2,
+                    rows=2,
+                    skip_gray=pixel_mode,
+                    mirror=mirror,
+                    fallback_fps=fallback_fps
+                )
             except FileNotFoundError:
                 await websocket.send_text(f"Error: '{video_path}' not found!")
                 queue_index += 1
@@ -528,6 +600,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     else:
                         break
                 continue
+
+            vid_w, vid_h = decoder.vid_w, decoder.vid_h
 
             if rows_cfg == 0:
                 cols, rows = calc_auto_dimensions(cols, vid_w, vid_h, pixel_mode)
@@ -535,22 +609,23 @@ async def websocket_endpoint(websocket: WebSocket):
             else:
                 rows = rows_cfg
 
-            try:
-                decoder = VideoDecoder(video_path, cols, rows, skip_gray=pixel_mode)
-            except FileNotFoundError:
-                await websocket.send_text(f"Error: '{video_path}' not found!")
-                queue_index += 1
-                if queue_index >= len(queue):
-                    if loop:
-                        queue_index = 0
-                    else:
-                        break
-                continue
-
+            decoder._size = (cols, rows)  # Apply calculated size
             mapper       = AsciiMapper()
             source_fps   = decoder.fps
             MAX_FPS      = 30
             char_byte_lut= np.array([ord(c) for c in mapper._lut], dtype=np.uint8)
+
+            # ── RUNTIME FILTERS (contrast / gamma / brightness / invert / sharpness / palette) ──
+            # These are mutated by the "filter" command from the client.
+            # gray_lut is a cached 256-byte LUT rebuilt only on value change.
+            filter_contrast   = 1.0
+            filter_gamma      = 1.0
+            filter_brightness = 0.0   # range: -100 .. +100
+            filter_invert     = False
+            filter_sharpness  = 0     # range: 0 .. 10
+            sharpness_kernel  = None
+            filter_palette    = "default"
+            gray_lut          = None  # None = identity (skip cv2.LUT call)
             qb           = {5: 0, 4: 2, 3: 3, 2: 5}.get(render_mode, 0)
 
             # ── FPS DECIMATION ──
@@ -626,8 +701,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     buf = bytes(pixel_send_buf)
                     return ('bytes', buf, pf, raw_sz, len(buf))
                 else:
-                    indices = np.floor_divide(gray_frame, max(1, 256 // mapper._n))
-                    np.clip(indices, 0, mapper._n - 1, out=indices)
+                    # ── APPLY SHARPNESS (float32 to avoid uint8 clamping artifacts) ──
+                    if sharpness_kernel is not None:
+                        sharp_f = cv2.filter2D(gray_frame.astype(np.float32), -1, sharpness_kernel)
+                        gray_frame = np.clip(sharp_f, 0, 255).astype(np.uint8)
+
+                    # ── APPLY CONTRAST / GAMMA FILTER ──
+                    if gray_lut is not None:
+                        gray_frame = cv2.LUT(gray_frame, gray_lut)
+                    
+                    # Proportional mapping: evenly distribute 0-255 across 0 to (_n - 1)
+                    indices = (gray_frame.astype(np.uint16) * (mapper._n - 1)) // 255
+                    np.clip(indices, 0, mapper._n - 1, out=indices) # Defensive clip
 
                     if render_mode == 1:
                         char_matrix = mapper._lut[indices]
@@ -704,6 +789,69 @@ async def websocket_endpoint(websocket: WebSocket):
                                 client_backlog = max(0, int(msg.get("depth", 0)))
                             except (TypeError, ValueError):
                                 client_backlog = 0
+                        elif msg.get("type") == "filter":
+                            # ── RUNTIME FILTER UPDATE ──
+                            # Rebuild the mapper / LUT only when values actually change.
+                            new_contrast   = float(msg.get("contrast",   filter_contrast))
+                            new_gamma      = float(msg.get("gamma",      filter_gamma))
+                            new_brightness = float(msg.get("brightness", filter_brightness))
+                            new_invert     = bool(msg.get("invert",      filter_invert))
+                            new_sharpness  = int(msg.get("sharpness",    filter_sharpness))
+                            new_palette    = str(msg.get("palette",      filter_palette))
+
+                            # Clamp to safe ranges
+                            new_contrast   = max(0.1, min(3.0, new_contrast))
+                            new_gamma      = max(0.1, min(3.0, new_gamma))
+                            new_brightness = max(-100.0, min(100.0, new_brightness))
+                            new_sharpness  = max(0, min(10, new_sharpness))
+
+                            # Sharpness Kernel update
+                            if new_sharpness != filter_sharpness:
+                                filter_sharpness = new_sharpness
+                                if filter_sharpness == 0:
+                                    sharpness_kernel = None
+                                else:
+                                    # Unsharp mask: sharpen = original + alpha * (original - blur)
+                                    # Kernel form: center gets (1 + 4*alpha), neighbours get -alpha
+                                    # We use much larger alpha values (0.5 -> 5.0) for visible effect
+                                    alpha = filter_sharpness * 0.5  # 0.5 at level 1, up to 5.0 at level 10
+                                    sharpness_kernel = np.array([
+                                        [-alpha,      -alpha,      -alpha],
+                                        [-alpha,  1 + 8*alpha,    -alpha],
+                                        [-alpha,      -alpha,      -alpha]
+                                    ], dtype=np.float32)
+
+                            # Palette switch
+                            if new_palette != filter_palette and new_palette in FILTER_PALETTES:
+                                filter_palette = new_palette
+                                mapper = AsciiMapper(palette=FILTER_PALETTES[filter_palette])
+                                char_byte_lut = np.array(
+                                    [ord(c) for c in mapper._lut], dtype=np.uint8)
+                                prev_frame = None  # force keyframe after palette change
+
+                            # Rebuild gray LUT when any scalar filter changes
+                            lut_changed = (
+                                new_contrast   != filter_contrast   or
+                                new_gamma      != filter_gamma      or
+                                new_brightness != filter_brightness or
+                                new_invert     != filter_invert
+                            )
+                            if lut_changed:
+                                filter_contrast   = new_contrast
+                                filter_gamma      = new_gamma
+                                filter_brightness = new_brightness
+                                filter_invert     = new_invert
+                                is_identity = (
+                                    filter_contrast   == 1.0  and
+                                    filter_gamma      == 1.0  and
+                                    filter_brightness == 0.0  and
+                                    not filter_invert
+                                )
+                                gray_lut = None if is_identity else _build_gray_lut(
+                                    filter_contrast, filter_gamma,
+                                    filter_brightness, filter_invert
+                                )
+                                prev_frame = None  # force keyframe
 
                     if is_paused:
                         await asyncio.sleep(0.1)
@@ -908,6 +1056,10 @@ if __name__ == "__main__":
         default=None,
         help="Path to a folder; plays all videos in filesystem order"
     )
+    src.add_argument("--webcam", action="store_true", default=False, help="Use webcam instead of a video file")
+    src.add_argument("--webcam-device", type=int, default=0, help="Webcam device index (default: 0)")
+    src.add_argument("--webcam-fps", type=int, default=30, help="Target webcam FPS (default: 30)")
+    src.add_argument("--no-mirror", action="store_true", default=False, help="Disable mirror (horizontal flip) in webcam mode")
 
     # ── Render ──
     render = parser.add_argument_group('\033[33mRender\033[0m')
