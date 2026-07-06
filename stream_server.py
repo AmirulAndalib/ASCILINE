@@ -345,9 +345,20 @@ async def audio_stream(v: int | None = None, start: float = 0.0):
         from fastapi import Response
         return Response(status_code=204)
 
-    if not os.path.exists(video_path):
+    import ytdl
+    is_remote = ytdl.is_url(video_path)
+    if not is_remote and not os.path.exists(video_path):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Video file not found")
+
+    # If it's a remote URL, we need to extract the actual stream URL for ffmpeg
+    if is_remote:
+        stream_info = ytdl.get_stream_url(video_path)
+        if stream_info:
+            video_path = stream_info[0] # The best audio/video URL
+        else:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Could not extract audio stream from URL")
 
     # Map 1-5 → 1.0x-2.0x FFmpeg volume
     ffmpeg_vol = 1.0 + (vol_level - 1) * 0.25
@@ -472,11 +483,25 @@ async def scrub_meta(v: int | None = None):
     if not getattr(app.state, "thumbnails", True):
         return Response(content='{"available": false}', media_type="application/json")
     video_path = _scrub_video_path(v)
-    if not video_path or not os.path.exists(video_path):
+    if not video_path:
         return Response(content='{"available": false}', media_type="application/json")
+        
+    import ytdl
+    is_remote = ytdl.is_url(video_path)
+    if not is_remote and not os.path.exists(video_path):
+        return Response(content='{"available": false}', media_type="application/json")
+        
+    if is_remote:
+        stream_info = ytdl.get_stream_url(video_path)
+        if not stream_info:
+            return Response(content='{"available": false}', media_type="application/json")
+        resolved_path = stream_info[0]
+    else:
+        resolved_path = video_path
+
     if video_path not in _scrub_cache:
         loop = asyncio.get_event_loop()
-        _scrub_cache[video_path] = await loop.run_in_executor(None, _build_scrub_sprite, video_path)
+        _scrub_cache[video_path] = await loop.run_in_executor(None, _build_scrub_sprite, resolved_path)
     built = _scrub_cache.get(video_path)
     if not built:
         return Response(content='{"available": false}', media_type="application/json")
