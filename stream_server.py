@@ -555,7 +555,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # the original uncompressed binary protocol, byte-for-byte unchanged.
     adaptive = websocket.query_params.get("codec") == "adaptive"
     tolerance = getattr(app.state, "tolerance", 0)  # lossy colour drift budget
-    rle_mode  = getattr(app.state, "rle_mode",  False)
+    # Backwards compatibility if clients send depth etc.
 
     queue = getattr(app.state, "queue", [])
     loop  = getattr(app.state, "loop", False)
@@ -761,8 +761,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         raw_sz = 4 + rows * cols * 4
                         if adaptive:
                             msg, npf = encode_frame(
-                                frame_buf.copy(), pf, fi, 3, tolerance,
-                                use_rle=rle_mode)
+                                frame_buf.copy(), pf, fi, 3, tolerance)
                             return ('bytes', msg, npf, raw_sz, len(msg))
                         else:
                             struct.pack_into(">I", ascii_send_buf, 0, fi)
@@ -1128,13 +1127,7 @@ if __name__ == "__main__":
         help="Turn off the hover thumbnails on the seek bar (skips building the "
              "preview sprite). The rest of the player still works."
     )
-    playback.add_argument(
-        "--rle",
-        action="store_true", default=False,
-        help="Enable RLE_FULL compression for full frames. Reduces bandwidth "
-             "significantly for flat-color/anime content. Adds minor CPU cost "
-             "and may increase bandwidth for high-motion or noisy sources. Off by default."
-    )
+
 
     # ── Server ──
     srv = parser.add_argument_group('\033[33mServer\033[0m')
@@ -1167,7 +1160,7 @@ if __name__ == "__main__":
     app.state.current_index = 0
     app.state.loop          = args.loop
     app.state.tolerance     = {"lossless": 0, "high": 4, "balanced": 8, "low": 16}[args.quality]
-    app.state.rle_mode      = args.rle
+
     app.state.debug         = args.debug
     app.state.thumbnails    = not args.no_thumbnails
     app.state.cache_limit   = args.cache_limit * 1024**2
@@ -1215,7 +1208,7 @@ if __name__ == "__main__":
     print(f" \033[32m▶\033[0m \033[1mLoop\033[0m      : {'ON' if args.loop else 'OFF'}")
     res_str = f"{global_default_cols}x{args.rows}" if args.rows > 0 else f"{global_default_cols}x(auto)"
     print(f" \033[32m▶\033[0m \033[1mResolution\033[0m: {res_str}")
-    print(f" \033[32m▶\033[0m \033[1mDefault\033[0m   : mode={args.mode} | pixel={'ON' if args.pixel else 'OFF'} | vol={args.vol} | rle={'ON' if args.rle else 'OFF'}")
+    print(f" \033[32m▶\033[0m \033[1mDefault\033[0m   : mode={args.mode} | pixel={'ON' if args.pixel else 'OFF'} | vol={args.vol}")
     print(f"\033[1;37m{'─'*55}\033[0m")
     MAX_DISPLAY = 10
     for i, entry in enumerate(queue[:MAX_DISPLAY], 1):
