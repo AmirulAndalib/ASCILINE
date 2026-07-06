@@ -31,7 +31,6 @@ from contextlib import asynccontextmanager
 # Import the existing engine (ascii_video_player2.py)
 from ascii_video_player2 import VideoDecoder, AsciiMapper
 from codec import encode_frame
-import ytdl
 
 # ── FILTER PALETTES ──────────────────────────────────────────────────────────
 # Named character palettes that the client can switch between at runtime.
