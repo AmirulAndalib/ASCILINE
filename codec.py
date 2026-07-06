@@ -56,29 +56,30 @@ def _rle_encode(frame: np.ndarray) -> bytes:
     for count, val in zip(run_lengths, values):
         val_bytes = val.tobytes()
         while count > 65535:
-            out.extend(struct.pack("<H", 65535))
+            out.extend(struct.pack('<H', 65535))
             out.extend(val_bytes)
             count -= 65535
         if count > 0:
-            out.extend(struct.pack("<H", count))
+            out.extend(struct.pack('<H', count))
             out.extend(val_bytes)
     return bytes(out)
 
-def _full_frame(raw: bytes, frame: np.ndarray, frame_index: int, level: int) -> bytes:
-    # Race ZLIB vs RLE_FULL
-    z_raw = zlib.compress(raw, level)
-    
-    rle_bytes = _rle_encode(frame)
-    z_rle = zlib.compress(rle_bytes, level)
-    
-    if len(z_rle) < len(z_raw) and len(z_rle) < len(raw):
-        return struct.pack(">IB", frame_index, TAG_RLE_FULL) + z_rle
-    elif len(z_raw) < len(raw):
-        return struct.pack(">IB", frame_index, TAG_ZLIB) + z_raw
-    return struct.pack(">IB", frame_index, TAG_RAW) + raw
+def _full_frame(raw: bytes, frame: np.ndarray, frame_index: int,
+                level: int, use_rle: bool) -> bytes:
+    if use_rle:
+        # Direct RLE — no comparison, no extra zlib on raw
+        rle_bytes = _rle_encode(frame)
+        z_rle = zlib.compress(rle_bytes, level)
+        return struct.pack('>IB', frame_index, TAG_RLE_FULL) + z_rle
+    # Original path: single zlib, fall back to raw if it inflates
+    z = zlib.compress(raw, level)
+    if len(z) < len(raw):
+        return struct.pack('>IB', frame_index, TAG_ZLIB) + z
+    return struct.pack('>IB', frame_index, TAG_RAW) + raw
 
 def encode_frame(frame: np.ndarray, prev: np.ndarray | None, frame_index: int,
-                 level: int = DEFAULT_LEVEL, tolerance: int = 0):
+                 level: int = DEFAULT_LEVEL, tolerance: int = 0,
+                 use_rle: bool = False):
     """
     Encode one framebuffer.
 
@@ -94,7 +95,7 @@ def encode_frame(frame: np.ndarray, prev: np.ndarray | None, frame_index: int,
     raw = frame.tobytes()
     keyframe = prev is None or (frame_index % KEYFRAME_INTERVAL == 0)
     if keyframe or prev.shape != frame.shape:
-        return _full_frame(raw, frame, frame_index, level), frame.copy()
+        return _full_frame(raw, frame, frame_index, level, use_rle), frame.copy()
 
     C = frame.shape[2]
     diff = np.abs(frame.astype(np.int16) - prev.astype(np.int16))
@@ -123,16 +124,16 @@ def encode_frame(frame: np.ndarray, prev: np.ndarray | None, frame_index: int,
         delta = zlib.compress(ci.tobytes() + vals.tobytes(), level)
         candidates.append((TAG_DELTA, delta, delta_shown))
     
-    # We still race Full ZLIB and Full RLE if they might win
+    # Full-frame fallback when delta doesn't apply or many cells changed
     if frac >= _ZLIB_MIN_FRAC or not candidates:
-        z_raw = zlib.compress(raw, level)
-        rle_bytes = _rle_encode(frame)
-        z_rle = zlib.compress(rle_bytes, level)
-        
-        if len(z_rle) < len(z_raw):
+        if use_rle:
+            # Direct RLE — skip ZLIB entirely
+            rle_bytes = _rle_encode(frame)
+            z_rle = zlib.compress(rle_bytes, level)
             candidates.append((TAG_RLE_FULL, z_rle, frame))
         else:
-            candidates.append((TAG_ZLIB, z_raw, frame))
+            # Original path: single zlib
+            candidates.append((TAG_ZLIB, zlib.compress(raw, level), frame))
 
     tag, payload, shown = min(candidates, key=lambda c: len(c[1]))
     # Never exceed the raw frame (zlib can inflate incompressible data slightly).
