@@ -1138,6 +1138,10 @@ if __name__ == "__main__":
     # ── High FPS Warning ──
     high_fps_videos = []
     for entry in queue:
+        if entry.get("is_webcam", False):
+            continue  # webcam: no fixed FPS to check
+        if not isinstance(entry['video'], str):
+            continue  # safety guard: non-string paths can't be URL-checked
         if ytdl.is_url(entry['video']):
             continue  # skip remote URLs; yt-dlp normalizes to 30 FPS
         cap = cv2.VideoCapture(entry['video'])
