@@ -335,6 +335,11 @@ async def audio_stream(v: int | None = None, start: float = 0.0):
     vol_level  = entry.get("vol", 1)
     video_path = entry.get("video", "video.mp4")
 
+    # Webcam has no audio file — return silence immediately
+    if entry.get("is_webcam", False) or not isinstance(video_path, str):
+        from fastapi import Response
+        return Response(status_code=204)
+
     # vol 0 → skip audio entirely, no FFmpeg process
     if vol_level <= 0:
         from fastapi import Response
@@ -546,7 +551,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # first time it is about to play, then the local path is cached back
             # into the queue so /audio and any --loop replay reuse the file
             # instead of re-downloading.
-            if ytdl.is_url(video_path):
+            if isinstance(video_path, str) and ytdl.is_url(video_path):
                 print(f"[YT] fetching ({queue_index + 1}/{len(queue)}) {video_path}")
                 try:
                     video_path = await safe_resolve_video_path(video_path)

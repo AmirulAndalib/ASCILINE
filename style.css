@@ -430,16 +430,18 @@ body {
 .filter-menu {
     display: none;
     position: absolute;
-    top: 50%;
-    left: calc(100% + 60px);
-    transform: translateY(-50%);
+    top: 0;
+    right: 0;
+    height: 100%;
     z-index: 100;
 }
 .filter-menu.open {
-    display: block;
+    display: flex;
+    align-items: center;
+    padding-right: 20px;
 }
 .filter-menu-inner {
-    background: #0d0d12;
+    background: rgba(13, 13, 18, 0.95);
     border: 1px solid var(--accent-color);
     border-radius: 4px;
     padding: 20px 28px;
@@ -447,9 +449,11 @@ body {
     color: var(--accent-color);
     min-width: 280px;
     max-width: 340px;
+    max-height: 90%;
+    overflow-y: auto;
     box-shadow:
-        0 0 20px rgba(0, 243, 255, 0.1),
-        inset 0 0 60px rgba(0, 0, 0, 0.4);
+        0 0 20px rgba(0, 0, 0, 0.8),
+        0 0 10px rgba(0, 255, 255, 0.1) inset;
 }
 .filter-header {
     display: flex;
