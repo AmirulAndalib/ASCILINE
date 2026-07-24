@@ -9,6 +9,24 @@ Priority Order:
   2. --folder ./videos         → folder scan (filesystem order, not alphabetical)
   3. positional video arg      → single video (legacy behavior)
 """
+import sys
+import signal
+
+def handle_signal_interrupt(signum, frame):
+    """
+    Gracefully Handle Keyboard Interrupt (Ctrl + C)
+    
+    Keyword arguments:
+    signum: The signal number (e.g., SIGINT)
+    frame -- The current stack object frame (can be None) 
+    
+    Return: None
+    """
+    
+    print("\n \033[33m⏹  Shutting down ASCILINE...\033[0m\n",flush=True)
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, handle_signal_interrupt)
 
 import asyncio
 import subprocess
