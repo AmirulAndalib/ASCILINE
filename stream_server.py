@@ -11,6 +11,10 @@ Priority Order:
 """
 import sys
 import signal
+import os
+
+# Enable ANSI escape sequences on Windows early so startup messages are colored
+os.system("")
 
 def handle_signal_interrupt(signum, frame):
     """
@@ -22,8 +26,7 @@ def handle_signal_interrupt(signum, frame):
     
     Return: None
     """
-    
-    print("\n \033[33m⏹  Shutting down ASCILINE...\033[0m\n",flush=True)
+    print("\n \033[33m[X] Startup Cancelled. Exiting ASCILINE...\033[0m\n",flush=True)
     sys.exit(0)
 
 signal.signal(signal.SIGINT, handle_signal_interrupt)
@@ -1073,19 +1076,19 @@ def print_status():
     rows  = getattr(app.state, "rows", 0)
 
     print(f"\n\033[1;37m{'═'*55}\033[0m")
-    print(f" \033[32m▶\033[0m \033[1mQueue\033[0m      : {len(queue)} video(s)")
-    print(f" \033[32m▶\033[0m \033[1mNow Playing\033[0m: {idx + 1}/{len(queue)}")
+    print(f" \033[32m>\033[0m \033[1mQueue\033[0m      : {len(queue)} video(s)")
+    print(f" \033[32m>\033[0m \033[1mNow Playing\033[0m: {idx + 1}/{len(queue)}")
     if queue and idx < len(queue):
         entry = queue[idx]
         px = ' \033[35m[PIXEL]\033[0m' if entry.get('pixel') else ''
         cols_override = entry.get('cols_override')
         cols = cols_override if cols_override is not None else (450 if entry.get('pixel') else 200)
         rows = entry.get('rows', rows)
-        print(f" \033[32m▶\033[0m \033[1mVideo\033[0m      : \033[36m{entry['video']}\033[0m")
-        print(f" \033[32m▶\033[0m \033[1mSettings\033[0m   : mode={entry['mode']}{px} vol={entry['vol']}")
+        print(f" \033[32m>\033[0m \033[1mVideo\033[0m      : \033[36m{entry['video']}\033[0m")
+        print(f" \033[32m>\033[0m \033[1mSettings\033[0m   : mode={entry['mode']}{px} vol={entry['vol']}")
     res_str = f"{cols}x{rows}" if rows > 0 else f"{cols}x(auto)"
-    print(f" \033[32m▶\033[0m \033[1mResolution\033[0m : {res_str}")
-    print(f" \033[32m▶\033[0m \033[1mLoop\033[0m       : {'ON' if loop else 'OFF'}")
+    print(f" \033[32m>\033[0m \033[1mResolution\033[0m : {res_str}")
+    print(f" \033[32m>\033[0m \033[1mLoop\033[0m       : {'ON' if loop else 'OFF'}")
     print(f"\033[1;37m{'═'*55}\033[0m\n")
 
 
@@ -1100,22 +1103,18 @@ def command_loop():
             elif cmd in ('/status', 'status'):
                 print_status()
             elif cmd in ('/quit', 'quit', 'exit'):
-                print("\n \033[33m⏹  Shutting down ASCILINE...\033[0m\n")
+                print("\n \033[33m[X] Shutting down ASCILINE...\033[0m\n")
                 os._exit(0)
             elif cmd:
                 print(f" \033[90mUnknown command: '{cmd}'. Type \033[36m/help\033[90m for options.\033[0m")
         except (EOFError, KeyboardInterrupt):
-            print("\n \033[33m⏹  Shutting down ASCILINE...\033[0m\n")
+            print("\n \033[33m[X] Shutting down ASCILINE...\033[0m\n")
             os._exit(0)
 
 
 if __name__ == "__main__":
     import argparse
-    import os
     import threading
-    
-    # Enable ANSI escape sequences on Windows
-    os.system("")
 
     parser = argparse.ArgumentParser(
         description=f"{ASCII_LOGO}\nReal-Time ASCII Web Server\n"
@@ -1266,24 +1265,24 @@ if __name__ == "__main__":
         is_webcam = queue[0].get("is_webcam", False)
         if not is_webcam and not ytdl.is_url(first_vid):
             try:
-                print(" \033[90m▶ Warming up cache for first video...\033[0m", end="", flush=True)
+                print(" \033[90m> Warming up cache for first video...\033[0m", end="", flush=True)
                 warm_decoder = VideoDecoder(first_vid, cols=2, rows=2)
                 warm_decoder.grab()
                 warm_decoder.release()
                 print(" \033[32mDONE\033[0m")
             except Exception as e:
-                print(f"\r\033[K \033[33m▶ Warmup failed (non-fatal): {e}\033[0m")
+                print(f"\r\033[K \033[33m> Warmup failed (non-fatal): {e}\033[0m")
         elif ytdl.is_url(first_vid):
-            print(" \033[90m▶ Warmup skipped: yt-dlp source (downloads on connect)\033[0m")
+            print(" \033[90m> Warmup skipped: yt-dlp source (downloads on connect)\033[0m")
 
     # ── Startup Banner ──
     print(ASCII_LOGO)
     print(f"\033[1;37m{'═'*55}\033[0m")
-    print(f" \033[32m▶\033[0m \033[1mQueue\033[0m     : {len(queue)} video(s)")
-    print(f" \033[32m▶\033[0m \033[1mLoop\033[0m      : {'ON' if args.loop else 'OFF'}")
+    print(f" \033[32m>\033[0m \033[1mQueue\033[0m     : {len(queue)} video(s)")
+    print(f" \033[32m>\033[0m \033[1mLoop\033[0m      : {'ON' if args.loop else 'OFF'}")
     res_str = f"{global_default_cols}x{args.rows}" if args.rows > 0 else f"{global_default_cols}x(auto)"
-    print(f" \033[32m▶\033[0m \033[1mResolution\033[0m: {res_str}")
-    print(f" \033[32m▶\033[0m \033[1mDefault\033[0m   : mode={args.mode} | pixel={'ON' if args.pixel else 'OFF'} | vol={args.vol}")
+    print(f" \033[32m>\033[0m \033[1mResolution\033[0m: {res_str}")
+    print(f" \033[32m>\033[0m \033[1mDefault\033[0m   : mode={args.mode} | pixel={'ON' if args.pixel else 'OFF'} | vol={args.vol}")
     print(f"\033[1;37m{'─'*55}\033[0m")
     MAX_DISPLAY = 10
     for i, entry in enumerate(queue[:MAX_DISPLAY], 1):
@@ -1292,7 +1291,7 @@ if __name__ == "__main__":
     if len(queue) > MAX_DISPLAY:
         print(f"  \033[90m... and {len(queue) - MAX_DISPLAY} more\033[0m")
     print(f"\033[1;37m{'═'*55}\033[0m\n")
-    print(f" \033[1;32m🚀 Server live →\033[0m \033[4;36mhttp://localhost:{args.port}\033[0m\n")
+    print(f" \033[1;32m[+] Server live →\033[0m \033[4;36mhttp://localhost:{args.port}\033[0m\n")
 
     # ── Run server in background thread, command loop in main thread ──
     server_thread = threading.Thread(
@@ -1306,4 +1305,9 @@ if __name__ == "__main__":
         daemon=True
     )
     server_thread.start()
+    
+    # Restore the default signal handler for the main thread so that 
+    # command_loop can catch KeyboardInterrupt and shut down cleanly.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    
     command_loop()
