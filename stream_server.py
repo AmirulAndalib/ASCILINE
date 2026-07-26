@@ -968,8 +968,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
                     # ALL CPU work in thread pool — event loop stays 100% free
+                    t_before = time.time()
                     result = await _loop.run_in_executor(
                         None, produce, prev_frame, frame_index)
+                    
+                    if is_webcam and (time.time() - t_before) < 0.005:
+                        # Safety net: Prevent 100% CPU runaway if OpenCV becomes non-blocking
+                        await asyncio.sleep(0.01)
 
                     if result is None:
                         break
