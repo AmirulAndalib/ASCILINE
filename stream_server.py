@@ -961,7 +961,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         frame_index += 1
                         elapsed = _loop.time() - start_time
                         wait = (frame_index * frame_t) - elapsed
-                        if wait > 0:
+                        if wait > 0 and not is_webcam:
                             await asyncio.sleep(wait)
                         continue
                     consec_drops = 0
@@ -996,7 +996,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     elapsed = _loop.time() - start_time
                     wait = (frame_index * frame_t) - elapsed
-                    if wait > 0:
+                    if wait > 0 and not is_webcam:
                         await asyncio.sleep(wait)
 
                     frame_index += 1

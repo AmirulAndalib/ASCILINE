@@ -54,6 +54,8 @@ let duration = 0;
 let isSeeking = false;
 let currentQueueIdx = 0;
 let audioOffset = 0;
+let isWebcamStream = false; // skips audio-sync gate and locks pause
+
 
 // Grid & Dimensions
 let gridCols = 0, gridRows = 0;
@@ -171,6 +173,10 @@ const beginRendering = () => {
 
 const triggerPlaybackStart = (epochToMatch) => {
     if (readyToRender || state !== 'PLAYING') return;
+    if (isWebcamStream) {
+        beginRendering();
+        return;
+    }
     if (audioEl) {
         // The very first video frame has arrived and is ready.
         // Now it is safe to start the audio clock.
@@ -236,6 +242,7 @@ function connectWebSocket() {
                 duration = (p.length > 7) ? parseFloat(p[7]) : 0;
                 const startOffset = (p.length > 8) ? parseFloat(p[8]) : 0;
                 const isWebcam = (p.length > 9 && parseInt(p[9]) === 1);
+                isWebcamStream = isWebcam;
                 currentQueueIdx = currentQueueIndex !== null ? currentQueueIndex : 0;
                 
                 if (seekBar) {
@@ -303,7 +310,7 @@ function connectWebSocket() {
 
 
 
-                    if (audioEl) {
+                    if (audioEl && !isWebcam) {
                         audioEl.pause();
                         const qs = currentQueueIndex !== null ? `v=${currentQueueIndex}&` : '';
                         const st = startOffset > 0 ? `start=${startOffset}&` : '';
@@ -402,20 +409,28 @@ function renderFrame(now) {
 
     if (frameBuffer.length === 0) return;
 
-    // A/V Sync: Drop frames that are too far behind the master clock (catch up)
-    while (frameBuffer.length > 0 && frameBuffer[0].time < masterClock - 0.1) {
-        frameBuffer.shift();
+    let frameObj;
+
+    if (isWebcamStream) {
+        // ZERO-LATENCY MODE: Grab the absolute newest frame, trash all older ones.
+        frameObj = frameBuffer.pop();
+        frameBuffer.length = 0; // Empty the buffer
+    } else {
+        // A/V Sync: Drop frames that are too far behind the master clock (catch up)
+        while (frameBuffer.length > 0 && frameBuffer[0].time < masterClock - 0.1) {
+            frameBuffer.shift();
+        }
+        
+        if (frameBuffer.length === 0) return;
+
+        // A/V Sync: Wait if the frame is in the future
+        if (frameBuffer[0].time > masterClock + 0.05) {
+            return;
+        }
+
+        frameObj = frameBuffer.shift();
     }
 
-    
-    if (frameBuffer.length === 0) return;
-
-    // A/V Sync: Wait if the frame is in the future
-    if (frameBuffer[0].time > masterClock + 0.05) {
-        return;
-    }
-
-    const frameObj = frameBuffer.shift();
     const frame = frameObj.data;
 
     frameCount++;
@@ -529,6 +544,7 @@ function finishStream() {
 // ═══════════════════════════════════════
 
 function togglePause() {
+    if (isWebcamStream) return; // Can't pause a live broadcast!
     if (state === 'PLAYING') {
         state = 'PAUSED';
         pauseStartTime = performance.now();
@@ -588,6 +604,7 @@ if (playPauseBtn) {
 // Seek to an absolute time. Reuses the live seek (tell the server, then reload
 // the audio from that point). Shared by the slider and the skip buttons.
 function doSeek(targetSec) {
+    if (isWebcamStream) return; // Can't seek a live broadcast!
     if (duration) targetSec = Math.max(0, Math.min(targetSec, duration));
     if (seekBar) seekBar.value = targetSec;
     if (seekPlayed && duration) seekPlayed.style.transform = `scaleX(${Math.min(1, targetSec / duration)})`;
