@@ -32,8 +32,6 @@ WORDMARK = r"""
 ╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝  ██
 """.strip("\n")
 
-
-TAGLINE = "Watch anything as ASCII."
 RAMP = "@%#*+=-:."  # ASCILINE's density ramp = the glitch alphabet
 
 # Column ranges of each glyph (incl. the play arrow), used to glitch one at a time.
@@ -52,7 +50,7 @@ def _color(s, code, enabled):
 
 def render_static(color=True):
     out = _color(WORDMARK, CYAN, color)
-    return f"{out}\n\n   {_color(TAGLINE, DIM, color)}"
+    return f"{out}\n"
 
 
 def animate(color=True, seconds=None):

@@ -203,18 +203,37 @@ def compile_video(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ASCILINE Static Compiler")
-    parser.add_argument("video", help="Path to input video")
-    parser.add_argument("--cols", type=int, default=300, help="Grid columns (default 300)")
-    parser.add_argument("--rows", type=int, default=0, help="Grid rows (0 = auto)")
-    parser.add_argument("--mode", type=int, default=6, choices=[1, 2, 3, 4, 5, 6], help="Render mode: 1=B&W  2=64c  3=512c  4=32Kc  5=262Kc  6=16M Ultra")
-    parser.add_argument("--pixel", action="store_true", help="Pixel mode (no characters)")
-    parser.add_argument("--tolerance", type=int, default=0, help="Color drift tolerance (0=lossless)")
-    parser.add_argument("--hard", action="store_true", help="Use maximum zlib compression (level 9) instead of default (level 3). Slower but smaller file.")
-    parser.add_argument("--quantize", type=int, default=0, choices=[0, 1, 2, 3], metavar="0-3", help="Pixel mode color quantization: bits to drop per channel (0=lossless, 1=slight, 2=medium, 3=aggressive). Reduces file size.")
-    parser.add_argument("--profile", action="store_true", help="Opt-in lossy DCT compression profile (tag 4, pixel mode). ~4-5x smaller at matched quality. Implies --pixel.")
-    parser.add_argument("--qf", type=int, default=70, help="Profile quality factor 1-100 (higher = better quality and larger file). Default 70.")
-    parser.add_argument("--out", type=str, default="", help="Output base name")
+    import sys
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    import logo
+    print(logo.render_static())
+    print("\033[1;37m" + "═"*55 + "\033[0m\n")
+
+    parser = argparse.ArgumentParser(
+        usage="python compiler.py [options] <video>",
+        description="\033[1;36mASCILINE Static Compiler\033[0m\n",
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=35)
+    )
+    # ── Source ──
+    src = parser.add_argument_group('\033[33mSource\033[0m')
+    src.add_argument("video", help="Path to input video")
+
+    # ── Render ──
+    rnd = parser.add_argument_group('\033[33mRender\033[0m')
+    rnd.add_argument("--cols", type=int, default=300, help="Grid columns (default 300)")
+    rnd.add_argument("--rows", type=int, default=0, help="Grid rows (0 = auto)")
+    rnd.add_argument("--mode", type=int, default=6, choices=[1, 2, 3, 4, 5, 6], help="Color quality: 1=B&W  2=64c  3=512c  4=32Kc  5=262Kc  6=16M Ultra")
+    rnd.add_argument("--pixel", action="store_true", help="Pixel mode (no characters)")
+
+    # ── Optimization & Export ──
+    opt = parser.add_argument_group('\033[33mOptimization & Export\033[0m')
+    opt.add_argument("--tolerance", type=int, default=0, help="Color drift tolerance (0=lossless)")
+    opt.add_argument("--quantize", type=int, default=0, choices=[0, 1, 2, 3], metavar="0-3", help="Pixel mode color quantization (0=lossless, 3=aggressive)")
+    opt.add_argument("--profile", action="store_true", help="Opt-in lossy DCT compression profile (implies --pixel)")
+    opt.add_argument("--qf", type=int, default=70, help="Profile quality factor 1-100 (Default 70)")
+    opt.add_argument("--hard", action="store_true", help="Use maximum zlib compression (level 9). Slower but smaller file.")
+    opt.add_argument("--out", type=str, default="", help="Output base name")
     
     args = parser.parse_args()
     

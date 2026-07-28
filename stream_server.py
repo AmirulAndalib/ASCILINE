@@ -1024,15 +1024,8 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected from the stream.")
 
 
-ASCII_LOGO = "\033[36m" + r"""
- █████╗ ███████╗ ██████╗██╗██╗     ██╗███╗   ██╗███████╗  ██
-██╔══██╗██╔════╝██╔════╝██║██║     ██║████╗  ██║██╔════╝  █████
-███████║███████╗██║     ██║██║     ██║██╔██╗ ██║█████╗    ████████
-██╔══██║╚════██║██║     ██║██║     ██║██║╚██╗██║██╔══╝    ████████
-██║  ██║███████║╚██████╗██║███████╗██║██║ ╚████║███████╗  █████
-╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝  ██
-
-""" + "\033[0m"
+import logo
+ASCII_LOGO = logo.render_static()
 
 HELP_TEXT = "\033[1;37m" + """
 ╔═══════════════════════════════════════════════════╗
@@ -1118,13 +1111,17 @@ def command_loop():
 
 
 if __name__ == "__main__":
+    import sys
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     import argparse
     import threading
 
     parser = argparse.ArgumentParser(
-        description=f"{ASCII_LOGO}\nReal-Time ASCII Web Server\n"
-                    "Stream local videos to your browser with high performance ASCII and Pixel rendering.",
-        formatter_class=argparse.RawTextHelpFormatter
+        usage="python stream_server.py [options] [video]",
+        description=f"{ASCII_LOGO}\n\033[1;36mReal-Time ASCII Web Server\033[0m\n"
+                    "Stream local videos to your browser with high performance ASCII and Pixel rendering.\n",
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=35)
     )
 
     # ── Source ──
@@ -1281,6 +1278,7 @@ if __name__ == "__main__":
             print(" \033[90m> Warmup skipped: yt-dlp source (downloads on connect)\033[0m")
 
     # ── Startup Banner ──
+    print()
     print(ASCII_LOGO)
     print(f"\033[1;37m{'═'*55}\033[0m")
     print(f" \033[32m>\033[0m \033[1mQueue\033[0m     : {len(queue)} video(s)")
