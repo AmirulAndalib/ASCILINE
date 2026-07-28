@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asciline"
+version = "0.1.0"
+description = "A high-performance, cross-platform real-time ASCII video rendering engine."
+requires-python = ">=3.9"
+authors = [
+    { name = "YusufB5" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+ytdlp = [
+    "yt-dlp>=2026.07.04",
+]
+
+[tool.setuptools]
+py-modules = [
+    "ascii_video_player2",
+    "codec",
+    "compiler",
+    "logo",
+    "stream_server",
+    "ytdl",
+]
