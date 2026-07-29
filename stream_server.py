@@ -1121,7 +1121,7 @@ if __name__ == "__main__":
         usage="python stream_server.py [options] [video]",
         description=f"{ASCII_LOGO}\n\033[1;36mReal-Time ASCII Web Server\033[0m\n"
                     "Stream local videos to your browser with high performance ASCII and Pixel rendering.\n",
-        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=35)
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=45)
     )
 
     # ── Source ──
