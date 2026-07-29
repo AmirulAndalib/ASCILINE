@@ -322,6 +322,10 @@ function connectWebSocket() {
                         // and been decoded into the frameBuffer.
                     }
 
+                // Re-push prefs after INIT — server filter state starts at defaults
+                // on each new stream, so a restored UI alone would not affect frames.
+                sendFilters();
+
                 return;
 
             }
@@ -747,9 +751,21 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+const PREF_VOLUME = 'asciline_volume';
+const PREF_FILTERS = 'asciline_filters';
+
 if (volumeSlider) {
+    const savedVol = localStorage.getItem(PREF_VOLUME);
+    if (savedVol !== null) {
+        const vol = Math.min(1, Math.max(0, parseFloat(savedVol)));
+        if (!Number.isNaN(vol)) {
+            volumeSlider.value = vol;
+            if (audioEl) audioEl.volume = vol;
+        }
+    }
     volumeSlider.addEventListener('input', () => {
         if (audioEl) audioEl.volume = volumeSlider.value;
+        localStorage.setItem(PREF_VOLUME, volumeSlider.value);
     });
 }
 
@@ -786,6 +802,46 @@ const paletteRadios    = document.querySelectorAll('input[name="palette"]');
 let currentFilters = { contrast: 1.0, gamma: 1.0, brightness: 0, invert: false, sharpness: 0, palette: 'default' };
 let filterSendTimer = null;
 
+function syncFilterUI() {
+    if (filterContrast)   filterContrast.value = currentFilters.contrast;
+    if (filterGamma)      filterGamma.value = currentFilters.gamma;
+    if (filterBrightness) filterBrightness.value = currentFilters.brightness;
+    if (filterSharpness)  filterSharpness.value = currentFilters.sharpness;
+    if (contrastVal)      contrastVal.textContent = Number(currentFilters.contrast).toFixed(2);
+    if (gammaVal)         gammaVal.textContent = Number(currentFilters.gamma).toFixed(2);
+    if (brightnessVal) {
+        const v = currentFilters.brightness;
+        brightnessVal.textContent = (v > 0 ? '+' : '') + v;
+    }
+    if (sharpnessVal) sharpnessVal.textContent = String(currentFilters.sharpness);
+    if (filterInvertBtn) {
+        filterInvertBtn.dataset.active = currentFilters.invert ? 'true' : 'false';
+        filterInvertBtn.textContent = currentFilters.invert ? 'ON' : 'OFF';
+    }
+    paletteRadios.forEach(r => { r.checked = (r.value === currentFilters.palette); });
+}
+
+// Restore filter prefs before any user interaction (WS re-apply happens on INIT).
+(() => {
+    const raw = localStorage.getItem(PREF_FILTERS);
+    if (!raw) return;
+    try {
+        const f = JSON.parse(raw);
+        const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+        const contrast = clamp(parseFloat(f.contrast), 0.1, 3.0);
+        const gamma = clamp(parseFloat(f.gamma), 0.1, 3.0);
+        const brightness = clamp(parseInt(f.brightness, 10), -100, 100);
+        const sharpness = clamp(parseInt(f.sharpness, 10), 0, 10);
+        const palette = ['default', 'flat', 'block'].includes(f.palette) ? f.palette : 'default';
+        if ([contrast, gamma, brightness, sharpness].some(Number.isNaN)) return;
+        currentFilters = {
+            contrast, gamma, brightness, sharpness, palette,
+            invert: Boolean(f.invert)
+        };
+        syncFilterUI();
+    } catch (_) { /* ignore corrupt prefs */ }
+})();
+
 function toggleFilterMenu() {
     if (filterMenu) filterMenu.classList.toggle('open');
 }
@@ -798,6 +854,7 @@ if (filterMenu) filterMenu.addEventListener('click', (e) => e.stopPropagation())
 
 // Debounced filter send — batches rapid slider drags into one WS message
 function sendFilters() {
+    localStorage.setItem(PREF_FILTERS, JSON.stringify(currentFilters));
     if (filterSendTimer) clearTimeout(filterSendTimer);
     filterSendTimer = setTimeout(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -888,19 +945,7 @@ if (filterReset) {
     filterReset.addEventListener('click', (e) => {
         e.stopPropagation();
         currentFilters = { contrast: 1.0, gamma: 1.0, brightness: 0, invert: false, sharpness: 0, palette: 'default' };
-        if (filterContrast)   filterContrast.value = 1.0;
-        if (filterGamma)      filterGamma.value = 1.0;
-        if (filterBrightness) filterBrightness.value = 0;
-        if (filterSharpness)  filterSharpness.value = 0;
-        if (contrastVal)      contrastVal.textContent = '1.00';
-        if (gammaVal)         gammaVal.textContent = '1.00';
-        if (brightnessVal)    brightnessVal.textContent = '0';
-        if (sharpnessVal)     sharpnessVal.textContent = '0';
-        if (filterInvertBtn) {
-            filterInvertBtn.dataset.active = 'false';
-            filterInvertBtn.textContent = 'OFF';
-        }
-        paletteRadios.forEach(r => { r.checked = (r.value === 'default'); });
+        syncFilterUI();
         sendFilters();
     });
 }
