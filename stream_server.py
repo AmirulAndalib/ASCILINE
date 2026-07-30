@@ -1112,7 +1112,10 @@ def command_loop():
                 os._exit(0)
             elif cmd:
                 print(f" \033[90mUnknown command: '{cmd}'. Type \033[36m/help\033[90m for options.\033[0m")
-        except (EOFError, KeyboardInterrupt):
+        except EOFError:
+            # No interactive stdin (Docker without TTY / piped input): keep serving.
+            threading.Event().wait()
+        except KeyboardInterrupt:
             print("\n \033[33m[X] Shutting down ASCILINE...\033[0m\n")
             os._exit(0)
 
@@ -1253,14 +1256,21 @@ if __name__ == "__main__":
         print("High FPS videos will automatically be decimated to ~30 FPS,")
         print("but performance may still drop depending on the system's CPU.")
         print("For optimal performance, we recommend using 30 FPS source videos.\033[0m\n")
-        
-        while True:
-            choice = input("\033[1mDo you want to continue anyway? (y/n): \033[0m").strip().lower()
-            if choice == 'y':
-                break
-            elif choice == 'n':
-                print("Exiting...")
-                exit(0)
+
+        # Skip the blocking prompt when there's no real terminal, or when
+        # running inside Docker (compose TTY often looks interactive but
+        # can't reliably accept the y/n answer in the attached UI).
+        in_docker = os.path.exists("/.dockerenv")
+        if not sys.stdin.isatty() or in_docker:
+            print("\033[33mNon-interactive / Docker — continuing.\033[0m\n")
+        else:
+            while True:
+                choice = input("\033[1mDo you want to continue anyway? (y/n): \033[0m").strip().lower()
+                if choice == 'y':
+                    break
+                elif choice == 'n':
+                    print("Exiting...")
+                    exit(0)
 
     # ── Warm-up Cache ──
     # Force the OS to load the first video into RAM cache before any client connects,

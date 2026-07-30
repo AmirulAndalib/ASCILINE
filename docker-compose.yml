@@ -1,0 +1,13 @@
+services:
+  asciline:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Put local .mp4/.mkv/… files here; they appear inside the container as /app/videos
+      - ./videos:/app/videos
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Optional: attach for /help commands. High-FPS y/n is skipped automatically in Docker.
+    stdin_open: true
+    tty: true
