@@ -516,7 +516,7 @@ function startBufferReports() {
     stopBufferReports();
     bufferReportTimer = setInterval(() => {
         if (ws && ws.readyState === WebSocket.OPEN && state === 'PLAYING') {
-            ws.send(JSON.stringify({ type: 'buffer', depth: framesInFlight }));
+            ws.send(JSON.stringify({ type: 'buffer', depth: framesInFlight + frameBuffer.length }));
         }
     }, 250);
 }
