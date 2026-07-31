@@ -61,6 +61,51 @@
 2. **Frontend (vanilla JS)**: receives binary frames over WebSocket, manages a jitter buffer, renders to a canvas grid.
 3. **Communication**: a custom `INIT` handshake negotiates resolution/FPS, followed by the binary frame stream.
 
+
+ASCILINE uses a modular architecture that separates the core rendering engine from its delivery methods.
+
+```text
+ASCILINE/
+# --- 1. Core Processing & Codec Engine ---
+├── ascii_video_player2.py       # Core VideoDecoder, AsciiMapper & standalone terminal player
+├── codec.py                     # Master Python encoder (RAW/ZLIB/DELTA/RLE/DCT)
+├── codec.js                     # Root JS decoder (Optimized for Live WebSocket streaming)
+│
+# --- 2. Live Streaming Web Client ---
+├── index.html                   # Web client UI for the live streaming server
+├── app.js                       # Frontend WebSocket connection and Canvas render loop
+├── style.css                    # UI styling, responsive layout, and real-time FX
+│
+# --- 3. Standalone Ecosystem & Compilers ---
+├── compiler.py                  # CLI Python compiler: Converts videos into .ascf format
+├── 📁 static_player/            # Web player for .ascf files
+│   ├── index.html               # Main UI for the static web player
+│   ├── reader.js                # .ascf file parser, chunk loader, and buffer manager
+│   ├── codec.js                 # Standalone JS decoder (Optimized for static buffers)
+│   └── 📁 studio/               # Browser-based compiler IDE
+│       ├── index.html           # Studio UI with built-in preview and seekbar
+│       └── encoder.js           # Client-side encoder to compile videos locally
+│
+# --- 4. Server & Backend Services ---
+├── stream_server.py             # FastAPI WebSocket server for real-time video streaming
+├── ytdl.py                      # yt-dlp integration for dynamic YouTube/URL fetching
+│
+# --- 5. Development & Testing ---
+├── 📁 experiments/              # Codec benchmarks, test vectors & experimental scripts
+├── 📁 test/                     # E2E tests, unit tests & backpressure validation
+│
+# --- 6. CLI Assets & Cache ---
+├── logo.py                      # ASCII branding banner displayed on startup
+├── 📁 videos/                   # Auto-managed local cache directory for downloaded media
+│
+# --- 7. Configuration & Infrastructure ---
+├── playlist.json                # Playback queue and per-video overrides
+├── Dockerfile                   # Docker container configuration
+├── docker-compose.yml           # Multi-service Docker setup
+├── pyproject.toml               # Python project metadata and tool settings
+└── requirements.txt             # Python dependencies
+```
+
 ## Adaptive Frame Codec (opt-in, ASCII modes 2-6)
 
 The original protocol re-sends the full grid every frame. An opt-in adaptive codec picks the smallest of several encodings per frame and tags it with a 1-byte header, without changing the rendered output:
