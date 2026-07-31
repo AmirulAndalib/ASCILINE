@@ -372,9 +372,13 @@ function connectWebSocket() {
 
     ws.onopen = () => { statusEl.textContent = 'Buffering...'; };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
         if (state === 'PLAYING' || state === 'PAUSED') {
-            statusEl.textContent = 'Stream Ended.';
+            // 1000 = server closed cleanly after finishing the queue. Anything
+            // else (1006 dropped TCP, 1001/1012 server shutdown) is a real drop.
+            const ended = event.code === 1000;
+            if (!ended) showToast('Connection lost.');
+            statusEl.textContent = ended ? 'Stream Ended.' : 'Connection lost.';
             statusEl.style.color = '#888';
             if (audioEl) audioEl.pause();
             setTimeout(() => finishStream(), 800);
@@ -382,6 +386,7 @@ function connectWebSocket() {
     };
 
     ws.onerror = () => {
+        showToast('Connection lost.');
         statusEl.textContent = 'Connection Error!';
         statusEl.style.color = '#ff0000';
         setTimeout(() => finishStream(), 2000);
@@ -523,6 +528,24 @@ function startBufferReports() {
 
 function stopBufferReports() {
     if (bufferReportTimer) { clearInterval(bufferReportTimer); bufferReportTimer = null; }
+}
+
+// Unexpected disconnect toast. Lazy-created; safe to call twice (onerror+onclose).
+let toastHideTimer = null;
+function showToast(msg) {
+    let el = document.getElementById('connection-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'connection-toast';
+        el.className = 'toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        container.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastHideTimer);
+    toastHideTimer = setTimeout(() => el.classList.remove('show'), 4000);
 }
 
 function finishStream() {
