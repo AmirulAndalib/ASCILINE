@@ -669,3 +669,27 @@ body {
     color: var(--accent-color);
     text-shadow: 0 0 6px rgba(0, 243, 255, 0.5);
 }
+
+/* ── TOAST ──────────────────────────── */
+.toast {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;   /* above the play overlay (10), below the filter menu (100) */
+    background: var(--post-bg);
+    border: 1px solid #333;
+    border-left: 3px solid var(--accent-color);
+    color: var(--accent-color);
+    font-family: var(--font-tech);
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 10px 18px;
+    border-radius: 3px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+.toast.show {
+    opacity: 1;
+}

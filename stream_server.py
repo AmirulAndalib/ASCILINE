@@ -1020,6 +1020,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     print("[DONE] All videos finished.")
                     break
 
+        # Close the handshake explicitly (code 1000). Falling off the end here
+        # drops the socket without a close frame, which reaches the client as
+        # 1006 — indistinguishable from the server dying mid-stream.
+        await websocket.close()
+
     except (WebSocketDisconnect, ConnectionClosed, RuntimeError):
         print("Client disconnected from the stream.")
 
