@@ -13,6 +13,8 @@ import sys
 import signal
 import os
 
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
 # Enable ANSI escape sequences on Windows early so startup messages are colored
 os.system("")
 
@@ -1125,11 +1127,21 @@ if __name__ == "__main__":
     import argparse
     import threading
 
+    try:
+        __version__ = _pkg_version("asciline")
+    except PackageNotFoundError:
+        __version__ = "unknown"
+
     parser = argparse.ArgumentParser(
         usage="python stream_server.py [options] [video]",
         description=f"{ASCII_LOGO}\n\033[1;36mReal-Time ASCII Web Server\033[0m\n"
                     "Stream local videos to your browser with high performance ASCII and Pixel rendering.\n",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=45)
+    )
+    parser.add_argument(
+        "--version", "-v",
+        action="version",
+        version=f"%(prog)s {__version__}"
     )
 
     # ── Source ──
@@ -1211,8 +1223,7 @@ if __name__ == "__main__":
 
     # Validate: --pixel does not support adaptive codec quality flags
     if args.pixel and args.quality != "lossless":
-        print("[ERROR] --pixel mode sends raw data and does not support the adaptive codec. Remove the --quality flag.")
-        exit(1)
+        parser.error("--pixel mode sends raw data and does not support the adaptive codec. Remove the --quality flag.")
 
     # Build the queue
     queue = build_queue(args)

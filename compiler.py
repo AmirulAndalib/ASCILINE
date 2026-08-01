@@ -9,6 +9,7 @@ import sys
 # Import the existing engine components (now in the same directory)
 from ascii_video_player2 import VideoDecoder, AsciiMapper
 from codec import encode_frame, DEFAULT_LEVEL, ProfileEncoder
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 def extract_audio(video_path: str, output_path: str):
     print(f"[Audio] Attempting to extract audio to {output_path}...")
@@ -210,10 +211,20 @@ if __name__ == "__main__":
     print(logo.render_static())
     print("\033[1;37m" + "═"*55 + "\033[0m\n")
 
+    try:
+        __version__ = _pkg_version("asciline")
+    except PackageNotFoundError:
+        __version__ = "unknown"
+
     parser = argparse.ArgumentParser(
         usage="python compiler.py [options] <video>",
         description="\033[1;36mASCILINE Static Compiler\033[0m\n",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=35)
+    )
+    parser.add_argument(
+        "--version", "-v",
+        action="version",
+        version=f"%(prog)s {__version__}"
     )
     # ── Source ──
     src = parser.add_argument_group('\033[33mSource\033[0m')
