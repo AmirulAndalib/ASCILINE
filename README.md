@@ -11,7 +11,6 @@
 <a href="https://trendshift.io/repositories/50861?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-50861" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/50861/weekly?language=Python" alt="YusufB5%2FASCILINE | Trendshift" width="250" height="55"/></a>
 <a href="https://trendshift.io/repositories/50861?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-50861" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/50861/daily" alt="YusufB5%2FASCILINE | Trendshift" width="250" height="55"/></a>
 
-
 **ASCILINE** is a high-performance, cross-platform real-time ASCII video rendering engine. It maps pixels to text-based representations and streams the result over a low-overhead binary protocol, turning the browser canvas into a typographic display surface.
 
 | Output | Details |
@@ -28,6 +27,7 @@
 - [Adaptive Frame Codec (opt-in, ASCII modes 2-6)](#adaptive-frame-codec-opt-in-ascii-modes-2-6)
 - [Zero-Dependency Static Web Player](#zero-dependency-static-web-player)
 - [Installation](#installation)
+- [Running with Docker](#running-with-docker)
 - [Customization](#customization)
 - [Troubleshooting](#troubleshooting)
 - [Live Demo](#live-demo)
@@ -60,7 +60,6 @@
 1. **Backend (Python/FastAPI)**: decodes video via OpenCV, maps pixels to ASCII via NumPy, streams binary frames.
 2. **Frontend (vanilla JS)**: receives binary frames over WebSocket, manages a jitter buffer, renders to a canvas grid.
 3. **Communication**: a custom `INIT` handshake negotiates resolution/FPS, followed by the binary frame stream.
-
 
 ASCILINE uses a modular architecture that separates the core rendering engine from its delivery methods.
 
@@ -102,7 +101,7 @@ ASCILINE/
 ├── playlist.json                # Playback queue and per-video overrides
 ├── Dockerfile                   # Docker container configuration
 ├── docker-compose.yml           # Multi-service Docker setup
-├── pyproject.toml               # Python project metadata and tool settings
+├── pyproject.toml               # Python project metadata, dependencies & optional extras
 └── requirements.txt             # Python dependencies
 ```
 
@@ -167,14 +166,14 @@ This is what powers the live demo at [asciline.dev](https://www.asciline.dev): t
 
 `static_player/studio/` is a standalone page (`index.html` + `encoder.js`, using `pako` from a CDN) that compiles a video to `.ascf` entirely client-side — drop a video in, get a `.ascf` out, nothing ever leaves your browser, no Python required.
 
-The page includes a built-in preview with a **custom seekbar**, allowing you to instantly scrub through your compiled clip. Because it shares the main `codec.js`, this studio player natively decodes all advanced compression tags (including Tag 4 DCT). 
+The page includes a built-in preview with a **custom seekbar**, allowing you to instantly scrub through your compiled clip. Because it shares the main `codec.js`, this studio player natively decodes all advanced compression tags (including Tag 4 DCT).
 
 *(Note: While it can play all tags, the client-side encoder itself is conservative and only emits RAW/ZLIB/DELTA for speed. For production output or maximum compression with RLE/DCT, use the Python compiler).*
 
 <a id="playing-a-compiled-file"></a>
 ### Playing a compiled file (the full player)
 
-For the full experience — audio sync and ASCII/pixel mode support — use the main player at `static_player/index.html`. 
+For the full experience — audio sync and ASCII/pixel mode support — use the main player at `static_player/index.html`.
 
 **Method A: Drag & Drop (No server needed!)**
 Simply open `static_player/index.html` in your browser and drag your `.ascf` file (along with an optional `.mp3` file for audio) directly onto the page. Playback starts instantly, completely bypassing browser CORS restrictions with zero backend required.
@@ -203,6 +202,13 @@ cd ASCILINE
 ```
 
 ### 2. Install dependencies
+
+ASCILINE's dependencies are defined in `pyproject.toml`. Install the base package with:
+```bash
+pip install .
+```
+
+Or, if you prefer the plain requirements file:
 ```bash
 pip install fastapi uvicorn opencv-python numpy websockets
 ```
@@ -211,9 +217,9 @@ Running headless (server / no display, e.g. a VPS or container)? `opencv-python-
 
 **Optional — play from YouTube (and other yt-dlp sites):**
 ```bash
-pip install yt-dlp
+pip install ".[ytdlp]"
 ```
-Only needed if you pass a URL instead of a local file. Local playback works without it. URL playback also uses FFmpeg (see below) to normalize downloads.
+This installs the `ytdlp` extra defined in `pyproject.toml`, pulling in `yt-dlp` for URL streaming. Only needed if you pass a URL instead of a local file — local playback works without it. URL playback also uses FFmpeg (see below) to normalize downloads.
 
 ### FFmpeg & FFprobe (required for audio and thumbnails)
 
@@ -231,7 +237,7 @@ Only needed if you pass a URL instead of a local file. Local playback works with
 python stream_server.py video.mp4 --cols 240
 ```
 
-**YouTube / URL (requires `yt-dlp`):**
+**YouTube / URL (requires the `ytdlp` extra):**
 ```bash
 python stream_server.py "https://youtu.be/VIDEO_ID" --cols 240
 python stream_server.py "https://www.youtube.com/playlist?list=..." --cols 220 --loop
@@ -291,6 +297,32 @@ python ascii_video_player2.py --webcam --cols 100
 ```
 
 > Don't resize the terminal window during playback — dynamic text wrapping will corrupt the layout.
+
+## Running with Docker
+
+ASCILINE ships with a `Dockerfile` and `docker-compose.yml` for running the live streaming server without installing Python, FFmpeg, or any dependency on the host. The image is based on `python:3.11-slim`, installs FFmpeg/FFprobe and CA certificates, and swaps `opencv-python` for `opencv-python-headless` at build time (the container has no display, so this is the lighter drop-in — see [Requirements](#0-requirements)). Note that webcam and terminal-standalone (`ascii_video_player2.py`) modes aren't practical inside a container — Docker is intended for the web streaming server (`stream_server.py`), which by default runs in **folder mode**, watching `videos/`.
+
+### Docker Compose (recommended)
+
+```bash
+docker compose up --build
+```
+
+This builds the image and starts `stream_server.py --folder videos --host 0.0.0.0 --port 8000`, exposing the web UI on `http://localhost:8000`. `docker-compose.yml` mounts `./videos` on the host to `/app/videos` in the container — drop your `.mp4`/`.mkv`/etc. files into your local `videos/` folder and they'll show up automatically, no rebuild needed. `stdin_open`/`tty` are enabled so interactive terminal prompts still work; the high-FPS y/n confirmation prompt is skipped automatically when running in Docker.
+
+### Plain Docker
+
+```bash
+docker build -t asciline .
+docker run -p 8000:8000 -v $(pwd)/videos:/app/videos asciline
+```
+
+Pass any `stream_server.py` CLI flags after the image name to override the default `--folder videos --host 0.0.0.0 --port 8000`, e.g.:
+```bash
+docker run -p 8000:8000 -v $(pwd)/videos:/app/videos asciline --folder videos --cols 220 --loop
+```
+
+> **YouTube/URL playback in Docker:** the image installs from `requirements.txt` only, so `yt-dlp` is **not** included by default. To enable URL playback inside the container, add `RUN pip install ".[ytdlp]"` (or `pip install yt-dlp`) to the `Dockerfile` before building, or install it in a custom layer on top of the base image.
 
 ## Customization
 
@@ -383,7 +415,7 @@ Quick fixes for the most common issues. Full protocol/technical details will liv
 - **Audio and video fall out of sync** — you've pushed `--cols` higher than your machine can encode/send in time. Lower `--cols` until playback keeps up. See [Resolution & auto-scaling](#resolution--auto-scaling).
 - **`FileNotFoundError` for `ffmpeg`/`ffprobe` (usually Windows)** — FFmpeg isn't on your PATH. Either install it via `winget install ffmpeg`, or manually drop `ffmpeg.exe`/`ffprobe.exe` next to `stream_server.py`. See [FFmpeg & FFprobe](#ffmpeg--ffprobe-required-for-audio-and-thumbnails).
 - **Terminal playback layout breaks / garbles mid-video** — don't resize the terminal window while `ascii_video_player2.py` is running; dynamic text wrapping corrupts the fixed-grid layout.
-- **YouTube/URL playback fails or hangs** — make sure `yt-dlp` is installed (`pip install yt-dlp`); it's an optional dependency and isn't required for local file playback.
+- **YouTube/URL playback fails or hangs** — make sure the `ytdlp` extra is installed (`pip install ".[ytdlp]"`); it's optional and isn't required for local file playback.
 - **First-run YouTube video is slow to start** — the server downloads and normalizes it to H.264/AAC first; every replay afterward is served instantly from the `videos/` cache.
 - **Disk filling up from cached downloads** — set a lower `--cache-limit` (in MB) to cap the LRU video cache.
 - **Studio (browser compiler) output is bigger than expected, or compiling takes a long time** — the browser-side encoder only emits RAW/ZLIB/DELTA (no RLE_FULL) and is meant for short clips. For long or size-sensitive videos, use the Python compiler (`compiler.py`) instead. See [Browser Studio](#browser-studio) and [Playing a compiled file](#playing-a-compiled-file) for the two preview options.
@@ -409,7 +441,7 @@ ASCILINE is distributed under a Custom License (Based on MIT) which includes an 
 
 ## Community
 
-Join the [Codequerors Discord Server](https://discord.gg/DzMpbZGkWV) to discuss creative coding, share ideas, or contribute to ASCILINE.
+Join the [ASCILINE Discord Server](https://discord.gg/9bpWwx9EHV) to share ideas, or contribute to ASCILINE.
 
 ## Contact
 
