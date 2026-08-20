@@ -437,7 +437,8 @@ Live, browser-based showcase across multiple rendering modes: **[asciline.dev](h
 <a id="support"></a>
 ## Support ❤️
 
-If this project is useful to you, crypto donations are welcome:
+If you find this project useful, you can support its development:
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=flat&logo=github)](https://github.com/sponsors/YusufB5)
 - **Solana (SOL / USDC):** `H1wSQAhjgsu7AxenF4e5ZBYiBjkhDLVzkKaZuVPcrE14`
 - **Ethereum (ETH / USDT):** `0x85B2f970045c0F7c282089Ab6CF897C20230e086`
 - **Bitcoin (BTC):** `bc1qvtcl55v54gkzwnp2zxn70usea3gf5ncncqa0fv`
