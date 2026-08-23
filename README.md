@@ -173,6 +173,8 @@ This is what powers the live demo at [asciline.dev](https://www.asciline.dev): t
 
 `static_player/studio/` is a standalone page (`index.html` + `encoder.js`, using `pako` from a CDN) that compiles a video to `.ascf` entirely client-side — drop a video in, get a `.ascf` out, nothing ever leaves your browser, no Python required.
 
+u can try it from - https://yusufb5.github.io/ASCILINE/static_player/studio/
+
 The page includes a built-in preview with a **custom seekbar**, allowing you to instantly scrub through your compiled clip. Because it shares the main `codec.js`, this studio player natively decodes all advanced compression tags (including Tag 4 DCT).
 
 *(Note: While it can play all tags, the client-side encoder itself is conservative and only emits RAW/ZLIB/DELTA for speed. For production output or maximum compression with RLE/DCT, use the Python compiler).*
