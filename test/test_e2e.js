@@ -11,6 +11,9 @@
  * Usage: node experiments/test_e2e.js <port> [maxFrames]
  */
 const codec = require('../codec.js');
+if (typeof WebSocket === 'undefined') {
+  global.WebSocket = require('ws');
+}
 
 const PORT = process.argv[2] || '8011';
 const MAX = parseInt(process.argv[3] || '60', 10);

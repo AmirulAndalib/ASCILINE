@@ -22,6 +22,9 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const path = require('path');
+if (typeof WebSocket === 'undefined') {
+  global.WebSocket = require('ws');
+}
 
 const PY = process.env.ASCIL_PY || 'python3';
 const REPO = path.dirname(__dirname);
