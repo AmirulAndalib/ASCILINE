@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-// Note: Once published to NPM, change this to: import { AsciiPlayer } from 'asciline-player';
-import { AsciiPlayer } from '../src/asciline-player.js';
+import { AsciiPlayer } from 'asciline-player';
 
 /**
  * AsciiCanvas React Component
