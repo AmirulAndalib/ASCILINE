@@ -161,7 +161,16 @@ async def lifespan(app: FastAPI):
     yield
     task.cancel()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_video_dimensions(path: str) -> tuple[int, int]:

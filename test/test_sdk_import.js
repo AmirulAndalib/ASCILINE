@@ -40,7 +40,7 @@ console.log('[PASS] AsciiPlayer is exported');
 // ── Verify all required public methods exist ─────────────────────────────────
 const requiredMethods = [
     'play', 'pause', 'resume', 'togglePlay',
-    'seek', 'skip', 'setVolume',
+    'seek', 'skip', 'setVolume', 'unmute',
     'setFilters', 'setPixelMode',
     'setSelectionLayer', 'toggleSelectionLayer',
     'getMasterClock', 'getState',

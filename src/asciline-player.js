@@ -433,7 +433,7 @@ export class AsciiPlayer {
             this.audioEl.pause();
             this.streamEpoch++;
             const myEpoch = this.streamEpoch;
-            this.audioEl.src = `/audio?v=${this.currentQueueIdx}&start=${targetSec}&t=${Date.now()}`;
+            this.audioEl.src = this._getAudioUrl(`v=${this.currentQueueIdx}&start=${targetSec}&t=${Date.now()}`);
             this.audioEl.load();
 
             if (this.state === 'PLAYING') {
@@ -479,6 +479,13 @@ export class AsciiPlayer {
     setVolume(volume) {
         const vol = Math.max(0, Math.min(1, volume));
         if (this.audioEl) this.audioEl.volume = vol;
+    }
+
+    async unmute() {
+        if (this.audioEl) {
+            this.audioEl.muted = false;
+            return this.audioEl.play();
+        }
     }
 
     getMasterClock() {
@@ -549,6 +556,24 @@ export class AsciiPlayer {
         this._listeners = {};
     }
 
+    _getAudioUrl(queryString = '') {
+        if (typeof this.options.audioUrl === 'string') {
+            const sep = this.options.audioUrl.includes('?') ? '&' : '?';
+            return queryString ? `${this.options.audioUrl}${sep}${queryString}` : this.options.audioUrl;
+        }
+        let base = '';
+        const target = this.resolvedWsUrl || this.options.url || '';
+        try {
+            if (target && (target.startsWith('ws://') || target.startsWith('wss://') || target.startsWith('http://') || target.startsWith('https://'))) {
+                const u = new URL(target);
+                const httpProto = u.protocol === 'wss:' ? 'https:' : (u.protocol === 'ws:' ? 'http:' : u.protocol);
+                base = `${httpProto}//${u.host}`;
+            }
+        } catch (_) {}
+        const prefix = base ? `${base}/audio` : '/audio';
+        return queryString ? `${prefix}?${queryString}` : prefix;
+    }
+
     // ── INTERNAL WEBSOCKET & RENDER ──
 
     _connectWebSocket() {
@@ -561,6 +586,7 @@ export class AsciiPlayer {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${location.host}/ws?codec=adaptive`;
         }
+        this.resolvedWsUrl = wsUrl;
 
         this.ws = new WebSocket(wsUrl);
         this.ws.binaryType = 'arraybuffer';
@@ -611,7 +637,7 @@ export class AsciiPlayer {
                         this.audioEl.pause();
                         const qs = `v=${this.currentQueueIdx}&`;
                         const st = startOffset > 0 ? `start=${startOffset}&` : '';
-                        this.audioEl.src = `/audio?${qs}${st}t=${Date.now()}`;
+                        this.audioEl.src = this._getAudioUrl(`${qs}${st}t=${Date.now()}`);
                         this.audioEl.load();
                     }
 

@@ -15,7 +15,7 @@ if _ROOT_DIR not in sys.path:
 from ascii_video_player2 import VideoDecoder, AsciiMapper
 from codec import encode_frame, DEFAULT_LEVEL
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["VideoDecoder", "AsciiMapper", "encode_frame", "AsciiStreamServer"]
 
 class AsciiStreamServer:
