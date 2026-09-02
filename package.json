@@ -1,0 +1,29 @@
+{
+  "name": "asciline-player",
+  "version": "0.1.0",
+  "description": "High-performance real-time ASCII video rendering engine and live canvas player.",
+  "main": "src/asciline-player.js",
+  "module": "src/asciline-player.js",
+  "type": "module",
+  "files": [
+    "src",
+    "codec.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/test_sdk_import.js"
+  },
+  "keywords": [
+    "ascii",
+    "video",
+    "canvas",
+    "streaming",
+    "player",
+    "websocket",
+    "fastapi",
+    "ansi"
+  ],
+  "author": "YusufB5",
+  "license": "SEE LICENSE IN LICENSE"
+}

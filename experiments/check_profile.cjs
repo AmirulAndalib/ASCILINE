@@ -5,7 +5,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const codec = require('../codec.js');
+const codec = require('../codec.cjs');
 const dir = path.join(__dirname, 'vectors', 'profile_qf70');
 
 function readChunks(buf) {

@@ -10,7 +10,7 @@
  *
  * Usage: node experiments/test_e2e.js <port> [maxFrames]
  */
-const codec = require('../codec.js');
+const codec = require('../codec.cjs');
 if (typeof WebSocket === 'undefined') {
   global.WebSocket = require('ws');
 }

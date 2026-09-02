@@ -14,7 +14,7 @@
  */
 const { execFileSync } = require('child_process');
 const path = require('path');
-const codec = require('../codec.js');
+const codec = require('../codec.cjs');
 
 function b64ToU8(s) {
   return new Uint8Array(Buffer.from(s, 'base64'));

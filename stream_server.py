@@ -201,9 +201,13 @@ def calc_auto_dimensions(cols: int, vid_w: int, vid_h: int, pixel_mode: bool) ->
 
 # Serve only whitelisted static files (security: prevents directory traversal)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_WHITELIST = {"app.js", "style.css", "codec.js"}
+STATIC_WHITELIST = {
+    "app.js", "style.css", "codec.js", 
+    "src/asciline-player.js", "src/index.js",
+    "examples/quickstart.html"
+}
 
-@app.get("/static/{filename}")
+@app.get("/static/{filename:path}")
 async def serve_static(filename: str):
     if filename not in STATIC_WHITELIST:
         from fastapi import HTTPException

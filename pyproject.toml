@@ -24,6 +24,7 @@ ytdlp = [
 ]
 
 [tool.setuptools]
+packages = ["asciline"]
 py-modules = [
     "ascii_video_player2",
     "codec",

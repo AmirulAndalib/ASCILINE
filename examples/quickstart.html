@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCILINE - 2-Line Quickstart</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #0f0;
+            font-family: monospace;
+        }
+        #player-box {
+            position: relative;
+            width: 80vw;
+            height: 70vh;
+            background: #050505;
+            border: 1px solid #222;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background: #111;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px 16px;
+            font-family: monospace;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>⚡ ASCILINE Live Stream Canvas</h2>
+
+    <div id="player-box">
+        <!-- 1. The Canvas -->
+        <canvas id="ascii-stream"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="btn-play">▶ Play / Pause</button>
+        <button id="btn-pixel">Toggle Pixel Mode</button>
+        <button id="btn-select">Text Selection: ON</button>
+        <span id="fps-badge" style="align-self: center; margin-left: 10px;">FPS: --</span>
+    </div>
+
+    <!-- 2. Import & Start (2 Lines of Code!) -->
+    <script type="module">
+        import { AsciiPlayer } from '../src/asciline-player.js';
+
+        // Initialize and connect to server (Invisible selection layer enabled by default!)
+        const player = new AsciiPlayer('#ascii-stream', {
+            url: 'ws://localhost:8000/ws?codec=adaptive',
+            selectionLayer: true
+        });
+
+        // Controls
+        document.getElementById('btn-play').addEventListener('click', () => player.togglePlay());
+        
+        let pixelOn = false;
+        document.getElementById('btn-pixel').addEventListener('click', () => {
+            pixelOn = !pixelOn;
+            player.setPixelMode(pixelOn);
+        });
+
+        const btnSelect = document.getElementById('btn-select');
+        btnSelect.addEventListener('click', () => {
+            const isEnabled = player.toggleSelectionLayer();
+            btnSelect.textContent = `Text Selection: ${isEnabled ? 'ON' : 'OFF'}`;
+            btnSelect.style.borderColor = isEnabled ? '#0f0' : '#888';
+            btnSelect.style.color = isEnabled ? '#0f0' : '#888';
+        });
+
+        player.on('fps', (info) => {
+            document.getElementById('fps-badge').textContent = `FPS: ${info.fps}/${info.targetFps} | Mode: ${info.mode} ${info.pixel ? '(PIXEL)' : ''}`;
+        });
+
+        // Auto-start
+        player.play();
+    </script>
+
+</body>
+</html>

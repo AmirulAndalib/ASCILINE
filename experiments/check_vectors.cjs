@@ -7,7 +7,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const codec = require('../codec.js');
+const codec = require('../codec.cjs');
 
 function readChunks(buf) {
   const out = [];
