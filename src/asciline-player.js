@@ -12,172 +12,185 @@
 // Embed or import AscilineCodec
 let AscilineCodecApi = (typeof AscilineCodec !== 'undefined') ? AscilineCodec : null;
 
-// Fallback inlined codec if not already in window/global scope
 if (!AscilineCodecApi) {
-    const TAG_RAW = 0, TAG_ZLIB = 1, TAG_DELTA = 2, TAG_RLE_FULL = 3, TAG_PROFILE = 4;
+  const TAG_RAW = 0, TAG_ZLIB = 1, TAG_DELTA = 2, TAG_RLE_FULL = 3, TAG_PROFILE = 4;
 
-    async function inflate(bytes) {
-        const ds = new DecompressionStream('deflate');
-        const writer = ds.writable.getWriter();
-        const reader = ds.readable.getReader();
-        writer.write(bytes);
-        writer.close();
-        const chunks = [];
-        let totalLen = 0;
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            totalLen += value.length;
-        }
-        if (chunks.length === 1) return chunks[0];
-        const out = new Uint8Array(totalLen);
-        let off = 0;
-        for (const c of chunks) { out.set(c, off); off += c.length; }
-        return out;
+  async function inflate(bytes) {
+    const ds = new DecompressionStream('deflate');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
+
+    writer.write(bytes);
+    writer.close();
+
+    const chunks = [];
+    let totalLen = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      totalLen += value.length;
     }
 
-    const _P_MI = Int32Array.from([23,23,23,23,23,23,23,23,31,27,18,6,-6,-18,-27,-31,30,12,-12,-30,-30,-12,12,30,
-      27,-6,-31,-18,18,31,6,-27,23,-23,-23,23,23,-23,-23,23,18,-31,6,27,-27,-6,31,-18,
-      12,-30,30,-12,-12,30,-30,12,6,-18,27,-31,31,-27,18,-6]);
-    const _P_ZZ = Int32Array.from([0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,
-      21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63]);
+    if (chunks.length === 1) return chunks[0];
+    const out = new Uint8Array(totalLen);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
 
-    function _idct8x8(block) {
-        const tmp = new Int32Array(64), out = new Int32Array(64);
-        for (let i = 0; i < 8; i++) {
-            for (let j = 0; j < 8; j++) {
-                let sum = 0;
-                for (let k = 0; k < 8; k++) sum += _P_MI[k * 8 + j] * block[i * 8 + k];
-                tmp[i * 8 + j] = sum >> 6;
-            }
+  const _P_MI = Int32Array.from([23,23,23,23,23,23,23,23,31,27,18,6,-6,-18,-27,-31,30,12,-12,-30,-30,-12,12,30,
+    27,-6,-31,-18,18,31,6,-27,23,-23,-23,23,23,-23,-23,23,18,-31,6,27,-27,-6,31,-18,
+    12,-30,30,-12,-12,30,-30,12,6,-18,27,-31,31,-27,18,-6]);
+  const _P_ZZ = Int32Array.from([0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,
+    21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63]);
+  const _P_QLB=[16,11,10,16,24,40,51,61,12,12,14,19,26,58,60,55,14,13,16,24,40,57,69,56,14,17,22,29,51,87,80,62,
+    18,22,37,56,68,109,103,77,24,35,55,64,81,104,113,92,49,64,78,87,103,121,120,101,72,92,95,98,112,100,103,99];
+  const _P_QCB=[17,18,24,47,99,99,99,99,18,21,26,66,99,99,99,99,24,26,56,99,99,99,99,99,47,66,99,99,99,99,99,99,
+    99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99];
+  function _pqtables(QF){const S=QF<50?5000/QF:200-2*QF;const f=b=>{const o=new Int32Array(64);for(let i=0;i<64;i++){let v=Math.floor((b[i]*S+50)/100);o[i]=v<1?1:(v>255?255:v);}return o;};return [f(_P_QLB),f(_P_QCB)];}
+  const _pT = new Float64Array(64);
+  const _pO = new Int32Array(64);
+  const _pZ = new Int32Array(64);
+  const _pC = new Int32Array(64);
+  function _pidct(C){
+    for(let u=0;u<8;u++)for(let x=0;x<8;x++){let s=0;for(let v=0;v<8;v++)s+=C[u*8+v]*_P_MI[v*8+x];_pT[u*8+x]=s;}
+    for(let y=0;y<8;y++)for(let x=0;x<8;x++){let s=0;for(let u=0;u<8;u++)s+=_P_MI[u*8+y]*_pT[u*8+x];_pO[y*8+x]=Math.floor((s+2048)/4096);}
+    return _pO;
+  }
+  function _pDecodePlane(data,off,P,NP,ft,useMv,qm){
+    const W=P.w,H=P.h,nbx=W>>3,nby=H>>3,nb=nbx*nby;
+    let skip=null; if(ft===1){const mb=(nb+7)>>3;skip=data.subarray(off,off+mb);off+=mb;}
+    let bi=0,dcPred=0;
+    for(let by=0;by<nby;by++)for(let bx=0;bx<nbx;bx++){
+      if(ft===1 && (skip[bi>>3]&(128>>(bi&7)))){bi++;continue;}
+      let dx=0,dy=0;
+      if(ft===1&&useMv){dx=(data[off]<<24>>24);dy=(data[off+1]<<24>>24);off+=2;}
+      const nP=data[off++];
+      _pZ.fill(0);
+      let pos=0,lastNz=-1;
+      for(let k=0;k<nP;k++){const run=data[off++];let v=data[off]|(data[off+1]<<8);off+=2;if(v&0x8000)v-=0x10000;pos+=run;_pZ[pos]=v;lastNz=pos;pos++;}
+      _pZ[0]+=dcPred; dcPred=_pZ[0];
+      let res=null,flat=0;
+      if(lastNz<=0){ flat=Math.floor((529*(_pZ[0]*qm[0])+2048)/4096); }
+      else { for(let k=0;k<64;k++){const id=_P_ZZ[k]; _pC[id]=_pZ[k]*qm[id];} res=_pidct(_pC); }
+      for(let y=0;y<8;y++){
+        const row=(by*8+y)*W;
+        for(let x=0;x<8;x++){
+          let pred;
+          if(ft===0)pred=128;
+          else{let sx=bx*8+x+dx,sy=by*8+y+dy;sx=sx<0?0:(sx>=W?W-1:sx);sy=sy<0?0:(sy>=H?H-1:sy);pred=P.buf[sy*W+sx];}
+          const val=pred+(res===null?flat:res[y*8+x]);
+          NP.buf[row+bx*8+x]=val<0?0:(val>255?255:val);
         }
-        for (let j = 0; j < 8; j++) {
-            for (let i = 0; i < 8; i++) {
-                let sum = 0;
-                for (let k = 0; k < 8; k++) sum += _P_MI[k * 8 + i] * tmp[k * 8 + j];
-                out[i * 8 + j] = sum >> 6;
-            }
-        }
-        return out;
+      }
+      bi++;
     }
+    return off;
+  }
+  function _pYuvToBgr(Y,Cb,Cr,W,H){const out=new Uint8Array(W*H*3);const cW=W>>1;
+    for(let y=0;y<H;y++){const cy=y>>1;for(let x=0;x<W;x++){const cx=x>>1;const yy=Y[y*W+x];const cb=Cb[cy*cW+cx]-128;const cr=Cr[cy*cW+cx]-128;
+      let R=yy+((359*cr+128)>>8),G=yy-((88*cb+183*cr+128)>>8),B=yy+((454*cb+128)>>8);const o=(y*W+x)*3;
+      out[o]=B<0?0:(B>255?255:B);out[o+1]=G<0?0:(G>255?255:G);out[o+2]=R<0?0:(R>255?255:R);}}
+    return out;}
+  function makeProfileDecoder(){
+    let W=0,H=0,cW=0,cH=0,planes=null,spare=null,QL=null,QC=null;
+    const alloc=()=>[{w:W,h:H,buf:new Uint8Array(W*H)},{w:cW,h:cH,buf:new Uint8Array(cW*cH)},{w:cW,h:cH,buf:new Uint8Array(cW*cH)}];
+    async function decode(message){
+      const b=message instanceof Uint8Array?message:new Uint8Array(message);
+      const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+      const idx=dv.getUint32(0,false); const payload=await inflate(b.subarray(5)); const ft=payload[0];
+      let off=1;
+      if(ft===0){
+        const QF=payload[1]; const cols=(payload[2]<<8)|payload[3]; const rows=(payload[4]<<8)|payload[5]; off=6;
+        const q=_pqtables(QF); QL=q[0]; QC=q[1];
+        if(planes===null||W!==cols||H!==rows){W=cols;H=rows;cW=W>>1;cH=H>>1;planes=alloc();spare=alloc();}
+      }
+      const out=spare;
+      for(let i=0;i<3;i++) out[i].buf.set(planes[i].buf);
+      for(let pi=0;pi<3;pi++) off=_pDecodePlane(payload,off,planes[pi],out[pi],ft,pi===0,pi===0?QL:QC);
+      spare=planes; planes=out;
+      return {frameIndex:idx, frame:_pYuvToBgr(planes[0].buf,planes[1].buf,planes[2].buf,W,H)};
+    }
+    return {decode, reset(){planes=null;spare=null;QL=QC=null;}};
+  }
 
-    function _decodeProfile(payload) {
-        const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-        const w = dv.getUint16(0, false), h = dv.getUint16(2, false);
-        const yBlocks = (w >> 3) * (h >> 3), cBlocks = (w >> 4) * (h >> 4);
-        let off = 4;
-        function readPlanes(count) {
-            const blks = new Array(count);
-            for (let b = 0; b < count; b++) {
-                const nz = payload[off++];
-                const blk = new Int32Array(64);
-                if (nz === 0) { blks[b] = blk; continue; }
-                blk[0] = dv.getInt16(off, false); off += 2;
-                for (let k = 1; k < nz; k++) {
-                    const pos = payload[off++];
-                    blk[_P_ZZ[pos]] = dv.getInt16(off, false); off += 2;
-                }
-                blks[b] = blk;
-            }
-            return blks;
+  function makeDecoder(cellBytes = 4) {
+    let prev = null;
+    let profileDec = null;
+
+    async function decode(message) {
+      const bytes = new Uint8Array(message);
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const frameIndex = view.getUint32(0, false);
+      const tag = bytes[4];
+      if (tag === TAG_PROFILE) {
+        if (!profileDec) profileDec = makeProfileDecoder();
+        return await profileDec.decode(bytes);
+      }
+      const payload = bytes.subarray(5);
+
+      let frame;
+      if (tag === TAG_RAW) {
+        frame = payload.slice();
+      } else if (tag === TAG_ZLIB) {
+        frame = await inflate(payload);
+      } else if (tag === TAG_DELTA) {
+        const body = await inflate(payload);
+        const k = body.length / (4 + cellBytes);
+        const idx = new DataView(body.buffer, body.byteOffset, body.byteLength);
+        frame = prev ? prev.slice() : new Uint8Array(k * cellBytes);
+        const valuesOffset = k * 4;
+        for (let j = 0; j < k; j++) {
+          const cell = idx.getUint32(j * 4, true);
+          const dst = cell * cellBytes;
+          const src = valuesOffset + j * cellBytes;
+          for (let c = 0; c < cellBytes; c++) frame[dst + c] = body[src + c];
         }
-        const yB = readPlanes(yBlocks), uB = readPlanes(cBlocks), vB = readPlanes(cBlocks);
-        const Y = new Uint8Array(w * h), U = new Uint8Array((w >> 1) * (h >> 1)), V = new Uint8Array((w >> 1) * (h >> 1));
-        const bw = w >> 3, cbw = w >> 4;
-        for (let by = 0; by < (h >> 3); by++) {
-            for (let bx = 0; bx < bw; bx++) {
-                const spat = _idct8x8(yB[by * bw + bx]);
-                for (let r = 0; r < 8; r++) {
-                    for (let c = 0; c < 8; c++) {
-                        Y[(by * 8 + r) * w + (bx * 8 + c)] = Math.max(0, Math.min(255, spat[r * 8 + c]));
-                    }
-                }
-            }
+      } else if (tag === TAG_RLE_FULL) {
+        const body = await inflate(payload);
+        const bodyView = new DataView(body.buffer, body.byteOffset, body.byteLength);
+        let totalCells = 0;
+        let offset = 0;
+        while (offset < body.length) {
+          totalCells += bodyView.getUint16(offset, true);
+          offset += 2 + cellBytes;
         }
-        for (let by = 0; by < (h >> 4); by++) {
-            for (let bx = 0; bx < cbw; bx++) {
-                const uS = _idct8x8(uB[by * cbw + bx]), vS = _idct8x8(vB[by * cbw + bx]);
-                for (let r = 0; r < 8; r++) {
-                    for (let c = 0; c < 8; c++) {
-                        const idx = (by * 8 + r) * (w >> 1) + (bx * 8 + c);
-                        U[idx] = Math.max(0, Math.min(255, uS[r * 8 + c]));
-                        V[idx] = Math.max(0, Math.min(255, vS[r * 8 + c]));
-                    }
-                }
-            }
-        }
-        const bgr = new Uint8Array(w * h * 3);
+        frame = new Uint8Array(totalCells * cellBytes);
+        offset = 0;
         let dst = 0;
-        for (let y = 0; y < h; y++) {
-            const yOff = y * w, cOff = (y >> 1) * (w >> 1);
-            for (let x = 0; x < w; x++) {
-                const yVal = Y[yOff + x], uVal = U[cOff + (x >> 1)] - 128, vVal = V[cOff + (x >> 1)] - 128;
-                const b = yVal + ((uVal * 454) >> 8);
-                const g = yVal - ((uVal * 88 + vVal * 183) >> 8);
-                const r = yVal + ((vVal * 359) >> 8);
-                bgr[dst++] = Math.max(0, Math.min(255, b));
-                bgr[dst++] = Math.max(0, Math.min(255, g));
-                bgr[dst++] = Math.max(0, Math.min(255, r));
+        while (offset < body.length) {
+          const count = bodyView.getUint16(offset, true);
+          const valOffset = offset + 2;
+          if (cellBytes === 4) {
+            const v0 = body[valOffset], v1 = body[valOffset+1], v2 = body[valOffset+2], v3 = body[valOffset+3];
+            for (let i = 0; i < count; i++) {
+              frame[dst++] = v0; frame[dst++] = v1; frame[dst++] = v2; frame[dst++] = v3;
             }
+          } else if (cellBytes === 3) {
+            const v0 = body[valOffset], v1 = body[valOffset+1], v2 = body[valOffset+2];
+            for (let i = 0; i < count; i++) {
+              frame[dst++] = v0; frame[dst++] = v1; frame[dst++] = v2;
+            }
+          } else {
+            for (let i = 0; i < count; i++) {
+              for (let c = 0; c < cellBytes; c++) frame[dst++] = body[valOffset + c];
+            }
+          }
+          offset += 2 + cellBytes;
         }
-        return bgr;
+      } else {
+        if (prev) return { frameIndex, frame: prev };
+        throw new Error('Unknown ASCILINE codec tag: ' + tag);
+      }
+      prev = frame;
+      return { frameIndex, frame };
     }
 
-    AscilineCodecApi = {
-        makeDecoder(cellBytes = 4) {
-            let prevFrame = null;
-            return {
-                async decode(arrayBuffer) {
-                    const view = new DataView(arrayBuffer);
-                    const frameIndex = view.getUint32(0, false);
-                    const tag = new Uint8Array(arrayBuffer, 4, 1)[0];
-                    const payload = new Uint8Array(arrayBuffer, 5);
-                    let frame;
-                    if (tag === TAG_RAW) {
-                        frame = payload;
-                    } else if (tag === TAG_ZLIB) {
-                        frame = await inflate(payload);
-                    } else if (tag === TAG_DELTA) {
-                        const inflated = await inflate(payload);
-                        if (!prevFrame) throw new Error('delta frame arrived before any keyframe');
-                        const dv = new DataView(inflated.buffer, inflated.byteOffset, inflated.byteLength);
-                        const count = dv.getUint32(0, true);
-                        const idxOff = 4, valOff = 4 + count * 4;
-                        frame = new Uint8Array(prevFrame);
-                        for (let i = 0; i < count; i++) {
-                            const cellIdx = dv.getUint32(idxOff + i * 4, true);
-                            const dst = cellIdx * cellBytes, src = valOff + i * cellBytes;
-                            for (let b = 0; b < cellBytes; b++) frame[dst + b] = inflated[src + b];
-                        }
-                    } else if (tag === TAG_RLE_FULL) {
-                        const inflated = await inflate(payload);
-                        const dv = new DataView(inflated.buffer, inflated.byteOffset, inflated.byteLength);
-                        const chunks = [];
-                        let totalLen = 0, p = 0;
-                        while (p < inflated.length) {
-                            const count = dv.getUint16(p, true); p += 2;
-                            const cell = inflated.subarray(p, p + cellBytes); p += cellBytes;
-                            const out = new Uint8Array(count * cellBytes);
-                            for (let c = 0; c < count; c++) out.set(cell, c * cellBytes);
-                            chunks.push(out);
-                            totalLen += out.length;
-                        }
-                        frame = new Uint8Array(totalLen);
-                        let off = 0;
-                        for (const ch of chunks) { frame.set(ch, off); off += ch.length; }
-                    } else if (tag === TAG_PROFILE) {
-                        const inflated = await inflate(payload);
-                        frame = _decodeProfile(inflated);
-                    } else {
-                        throw new Error(`unknown tag ${tag}`);
-                    }
-                    prevFrame = frame;
-                    return { frameIndex, frame };
-                }
-            };
-        }
-    };
+    return { decode, reset() { prev = null; profileDec = null; } };
+  }
+
+  AscilineCodecApi = { makeDecoder, makeProfileDecoder, inflate, TAG_RAW, TAG_ZLIB, TAG_DELTA, TAG_RLE_FULL, TAG_PROFILE };
 }
 
 const CHAR_LUT = new Array(128);
@@ -205,6 +218,7 @@ export class AsciiPlayer {
             renderMode: 1,              // 1: Text, 2: 64 Color, 3: 512 Color, etc.
             pixelMode: false,           // Raw pixel mode
             autoplay: false,
+            playOverlay: true,          // Auto-create a ▶ play button overlay (set false to manage manually)
             bufferSize: 4,
             filters: {
                 contrast: 1.0,
@@ -325,6 +339,11 @@ export class AsciiPlayer {
 
         window.addEventListener('resize', this._resizeBound);
 
+        // Build the ▶ play overlay unless opted out or autoplay is on
+        if (this.options.playOverlay && !this.options.autoplay) {
+            this._createPlayOverlay();
+        }
+
         if (this.options.autoplay) {
             this.play();
         }
@@ -371,6 +390,7 @@ export class AsciiPlayer {
             return;
         }
         if (this.state !== 'IDLE' && this.state !== 'ENDED' && this.state !== 'ERROR') return;
+        this._hidePlayOverlay();
         this._setState('CONNECTING');
         this._connectWebSocket();
     }
@@ -482,14 +502,41 @@ export class AsciiPlayer {
     }
 
     async unmute() {
-        if (this.audioEl) {
-            this.audioEl.muted = false;
-            return this.audioEl.play();
+        if (!this.audioEl) return;
+        // If video has been running on wall-clock while audio was blocked,
+        // seek the audio stream to the current video position so they sync up instantly.
+        if (this._audioGated && this.audioEl.paused && this.readyToRender && !this.isWebcamStream) {
+            const currentSec = (performance.now() - this.streamStartTime) / 1000.0;
+            if (currentSec > 0.5) {
+                this.audioOffset = currentSec;
+                this.audioEl.src = this._getAudioUrl(
+                    `v=${this.currentQueueIdx}&start=${currentSec.toFixed(2)}&t=${Date.now()}`
+                );
+                this.audioEl.load();
+            }
         }
+        this._audioGated = false;
+        this.audioEl.muted = false;
+        return this.audioEl.play();
     }
 
     getMasterClock() {
+        // Audio is the master clock as long as it has loaded metadata (readyState >= 1).
+        // This matches the original app.js logic from before SDK extraction:
+        //   - When playing: audioEl.currentTime advances → video follows
+        //   - When paused:  audioEl.currentTime is frozen → video correctly stays put
+        //   - After seek:   audioEl.currentTime reflects the new position immediately
+        //   - Initial load: readyState rises to 1 (HAVE_METADATA) once src+load() completes
+        //
+        // The only case we want wall-clock is when audio hasn't loaded at all (readyState 0)
+        // AND audio is paused AND currentTime is 0 — i.e. audio blocked by autoplay policy
+        // before any data has arrived. We detect this with the _audioGated flag set in
+        // _triggerPlaybackStart when audio.play() is rejected by the browser.
         if (this.audioEl && this.audioEl.readyState >= 1) {
+            if (this._audioGated && this.audioEl.paused && this.audioEl.currentTime === 0) {
+                // Autoplay blocked: run on wall-clock so video doesn't freeze
+                return (performance.now() - this.streamStartTime) / 1000.0;
+            }
             return this.audioEl.currentTime + this.audioOffset;
         }
         return (performance.now() - this.streamStartTime) / 1000.0;
@@ -540,7 +587,64 @@ export class AsciiPlayer {
         return this.selectionEnabled;
     }
 
+    // ── PLAY OVERLAY ──
+
+    _createPlayOverlay() {
+        if (this._playOverlay) return; // Already exists
+
+        const overlay = document.createElement('div');
+        overlay.className = 'ascii-play-overlay';
+        overlay.style.cssText = [
+            'position:absolute', 'inset:0', 'display:flex',
+            'align-items:center', 'justify-content:center',
+            'cursor:pointer', 'z-index:10',
+            'background:rgba(0,0,0,0.45)',
+            'transition:opacity 0.15s ease',
+        ].join(';');
+
+        const btn = document.createElement('div');
+        btn.className = 'ascii-play-btn';
+        btn.innerHTML = '&#9654;'; // ▶
+        btn.style.cssText = [
+            'width:72px', 'height:72px', 'border-radius:50%',
+            'background:rgba(255,255,255,0.18)',
+            'border:3px solid rgba(255,255,255,0.7)',
+            'display:flex', 'align-items:center', 'justify-content:center',
+            'font-size:28px', 'color:#fff',
+            'padding-left:5px', // optical center for ▶
+            'pointer-events:none',
+            'transition:transform 0.1s ease, background 0.1s ease',
+        ].join(';');
+
+        overlay.addEventListener('mouseenter', () => {
+            btn.style.background = 'rgba(255,255,255,0.30)';
+            btn.style.transform = 'scale(1.08)';
+        });
+        overlay.addEventListener('mouseleave', () => {
+            btn.style.background = 'rgba(255,255,255,0.18)';
+            btn.style.transform = 'scale(1)';
+        });
+
+        overlay.appendChild(btn);
+        overlay.addEventListener('click', () => this.play(), { once: true });
+
+        // Ensure container is positioned
+        if (getComputedStyle(this.container).position === 'static') {
+            this.container.style.position = 'relative';
+        }
+
+        this.container.appendChild(overlay);
+        this._playOverlay = overlay;
+    }
+
+    _hidePlayOverlay() {
+        if (!this._playOverlay) return;
+        this._playOverlay.remove();
+        this._playOverlay = null;
+    }
+
     destroy() {
+        this._hidePlayOverlay();
         this._stopBufferReports();
         window.removeEventListener('resize', this._resizeBound);
         if (this.ws) {
@@ -712,19 +816,30 @@ export class AsciiPlayer {
             return;
         }
 
-        this.audioEl.play().catch(() => {});
-        if (this.audioEl.readyState >= 3) {
-            this._beginRendering();
-        } else {
-            this.audioEl.addEventListener('playing', () => {
-                if (epochToMatch !== this.streamEpoch) return;
+        // Try to start audio. If play() was called from a user gesture (▶ button),
+        // the browser grants permission and audio starts in sync with video (t=0).
+        // If blocked by autoplay policy, we set _audioGated=true so getMasterClock()
+        // falls back to wall-clock — video plays freely until user triggers unmute().
+        this._audioGated = false;
+        this.audioEl.play().then(() => {
+            this._audioGated = false;
+            if (epochToMatch === this.streamEpoch && !this.readyToRender) {
                 this._beginRendering();
-            }, { once: true });
-            setTimeout(() => {
-                if (epochToMatch !== this.streamEpoch) return;
-                if (!this.readyToRender) this._beginRendering();
-            }, 500);
-        }
+            }
+        }).catch(() => {
+            // Autoplay blocked — set flag so getMasterClock uses wall-clock
+            this._audioGated = true;
+            if (epochToMatch === this.streamEpoch && !this.readyToRender) {
+                this._beginRendering();
+            }
+        });
+
+        // Safety fallback: if audio hasn't resolved play/reject after 300ms, start anyway
+        setTimeout(() => {
+            if (epochToMatch === this.streamEpoch && !this.readyToRender) {
+                this._beginRendering();
+            }
+        }, 300);
     }
 
     _beginRendering() {

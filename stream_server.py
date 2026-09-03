@@ -186,14 +186,24 @@ def get_video_dimensions(path: str) -> tuple[int, int]:
 
 def calc_auto_dimensions(cols: int, vid_w: int, vid_h: int, pixel_mode: bool) -> tuple[int, int]:
     """
-    Calculate (cols, rows) from video aspect ratio.
+    Calculate grid dimensions preserving video aspect ratio.
     ASCII mode: characters are ~2x taller than wide, so divide by 2.
     Pixel mode: cells are square (CSS stretches), no correction needed.
     """
-    # Pixel mode uses GPU-accelerated fillRect → generous cap
-    # ASCII mode uses CPU fillText per cell → tight cap to prevent stutter on vertical videos
-    MAX_ROWS = 1080 if pixel_mode else 300
     ratio = vid_w / max(vid_h, 1)
+
+    if not pixel_mode and vid_h > vid_w:
+        # Vertical / Portrait video (e.g. YouTube Shorts, Reels, 9:16).
+        # In vertical videos, using 200 columns blows up rows to 180+ (36,000+ characters),
+        # crushing the letters together into illegible stripes and tanking the browser's
+        # 2D canvas fillText rendering to 10 FPS.
+        # Scale columns down so character width/height stays natural and cell count <= 10,000.
+        portrait_cols_cap = max(60, min(cols, round(cols * ratio * 0.85)))
+        cols = portrait_cols_cap
+
+    # Pixel mode uses GPU-accelerated / direct Uint8Array putImageData → generous cap
+    # ASCII mode uses CPU fillText per cell → tight cap to prevent stutter on vertical videos
+    MAX_ROWS = 1080 if pixel_mode else 120
     
     if pixel_mode:
         rows = max(1, round(cols / ratio))
@@ -205,6 +215,12 @@ def calc_auto_dimensions(cols: int, vid_w: int, vid_h: int, pixel_mode: bool) ->
         scale = MAX_ROWS / rows
         rows = MAX_ROWS
         cols = max(1, round(cols * scale))
+
+    # Extra safety for ASCII mode: ensure total cells never exceeds 12,000 to guarantee 30-60 FPS
+    if not pixel_mode and (cols * rows) > 12000:
+        scale = (12000 / (cols * rows)) ** 0.5
+        cols = max(1, round(cols * scale))
+        rows = max(1, round(rows * scale))
         
     return cols, rows
 
