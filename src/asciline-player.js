@@ -1,4 +1,7 @@
 /**
+ * SPDX-License-Identifier: MIT
+ * Part of ASCILINE — Licensed under MIT (see LICENSE-MIT)
+ *
  * ASCILINE Player SDK (asciline-player.js)
  * ========================================
  * High-performance, zero-dependency ASCII Video Player and WebSocket Stream Client.

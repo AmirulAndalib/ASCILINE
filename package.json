@@ -9,7 +9,7 @@
     "src",
     "codec.cjs",
     "README.md",
-    "LICENSE"
+    "LICENSE-MIT"
   ],
   "scripts": {
     "test": "node test/test_sdk_import.js"
@@ -25,5 +25,5 @@
     "ansi"
   ],
   "author": "YusufB5",
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "MIT"
 }

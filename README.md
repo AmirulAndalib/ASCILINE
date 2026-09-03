@@ -19,6 +19,8 @@
 [![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
 [![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)](https://numpy.org/)
 [![HTML5 Canvas](https://img.shields.io/badge/HTML5_Canvas-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
+[![License: AGPL v3](https://img.shields.io/badge/Engine_License-AGPL_v3-blue.svg)](LICENSE-AGPL)
+[![License: MIT](https://img.shields.io/badge/SDK_License-MIT-green.svg)](LICENSE-MIT)
 
 | Output | Details |
 | :--- | :--- |
@@ -447,7 +449,10 @@ If you find this project useful, you can support its development:
 
 ## License
 
-ASCILINE is distributed under a Custom License (Based on MIT) which includes an anti-advertisement clause. See [LICENSE](LICENSE) for the full text.
+ASCILINE is distributed under a split-licensing model:
+
+- **Core Engine & Streaming Server:** [GNU AGPLv3 or later (AGPL-3.0-or-later)](LICENSE-AGPL) — See [LICENSE-AGPL](LICENSE-AGPL) for full text.
+- **Client SDK & Web Decoders (`asciline-player`, `codec.js`):** [MIT License](LICENSE-MIT) — See [LICENSE-MIT](LICENSE-MIT) for full text.
 
 ## Community
 

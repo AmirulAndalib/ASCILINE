@@ -1,4 +1,7 @@
 /**
+ * SPDX-License-Identifier: MIT
+ * Part of ASCILINE — Licensed under MIT (see LICENSE-MIT)
+ *
  * codec.js — Adaptive frame decoder for ASCILINE.
  *
  * Mirrors codec.py. Runs in the browser (attaches window.AscilineCodec) and in
