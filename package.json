@@ -1,6 +1,6 @@
 {
   "name": "asciline-player",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "High-performance real-time ASCII video rendering engine and live canvas player.",
   "main": "src/asciline-player.js",
   "module": "src/asciline-player.js",

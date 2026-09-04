@@ -192,18 +192,24 @@ def calc_auto_dimensions(cols: int, vid_w: int, vid_h: int, pixel_mode: bool) ->
     """
     ratio = vid_w / max(vid_h, 1)
 
-    if not pixel_mode and vid_h > vid_w:
+    if vid_h > vid_w:
         # Vertical / Portrait video (e.g. YouTube Shorts, Reels, 9:16).
-        # In vertical videos, using 200 columns blows up rows to 180+ (36,000+ characters),
-        # crushing the letters together into illegible stripes and tanking the browser's
-        # 2D canvas fillText rendering to 10 FPS.
-        # Scale columns down so character width/height stays natural and cell count <= 10,000.
-        portrait_cols_cap = max(60, min(cols, round(cols * ratio * 0.85)))
-        cols = portrait_cols_cap
+        if pixel_mode:
+            # In vertical videos, keeping 450 columns blows up rows to 800 (360,000 pixels = 1.1 MB/frame).
+            # That blasts 40 MB/s over WebSocket, saturating TCP buffers and causing 2-3 second freezes.
+            # Scale columns to match the standard horizontal budget (~115,000 pixels).
+            pixel_cols_cap = max(160, min(cols, round((115000 * ratio) ** 0.5)))
+            cols = pixel_cols_cap
+        else:
+            # In ASCII mode, using 200 columns blows up rows to 180+ (36,000+ characters),
+            # crushing the letters together into illegible stripes and tanking the browser's
+            # 2D canvas fillText rendering to 10 FPS.
+            portrait_cols_cap = max(60, min(cols, round(cols * ratio * 0.85)))
+            cols = portrait_cols_cap
 
     # Pixel mode uses GPU-accelerated / direct Uint8Array putImageData → generous cap
     # ASCII mode uses CPU fillText per cell → tight cap to prevent stutter on vertical videos
-    MAX_ROWS = 1080 if pixel_mode else 120
+    MAX_ROWS = 640 if pixel_mode else 120
     
     if pixel_mode:
         rows = max(1, round(cols / ratio))
@@ -216,9 +222,12 @@ def calc_auto_dimensions(cols: int, vid_w: int, vid_h: int, pixel_mode: bool) ->
         rows = MAX_ROWS
         cols = max(1, round(cols * scale))
 
-    # Extra safety for ASCII mode: ensure total cells never exceeds 12,000 to guarantee 30-60 FPS
-    if not pixel_mode and (cols * rows) > 12000:
-        scale = (12000 / (cols * rows)) ** 0.5
+    # Safety budget cap:
+    # ASCII mode: max 12,000 cells (CPU fillText limitation)
+    # Pixel mode: max 125,000 pixels (~10 MB/s bandwidth & JS putImageData limit)
+    MAX_TOTAL = 125000 if pixel_mode else 12000
+    if (cols * rows) > MAX_TOTAL:
+        scale = (MAX_TOTAL / (cols * rows)) ** 0.5
         cols = max(1, round(cols * scale))
         rows = max(1, round(rows * scale))
         
@@ -598,9 +607,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.accept()
 
-    # Opt-in adaptive codec (raw/zlib/delta). Legacy clients omit it and get
-    # the original uncompressed binary protocol, byte-for-byte unchanged.
-    adaptive = websocket.query_params.get("codec") == "adaptive"
+    # Adaptive codec (raw/zlib/delta) is the modern ASCILINE standard.
+    # Defaults to adaptive=True unless caller explicitly asks for codec=raw.
+    codec_param = websocket.query_params.get("codec", "adaptive")
+    adaptive = codec_param != "raw" and codec_param != "legacy"
     tolerance = getattr(app.state, "tolerance", 0)  # lossy colour drift budget
     # Backwards compatibility if clients send depth etc.
 
@@ -1056,8 +1066,11 @@ async def websocket_endpoint(websocket: WebSocket):
         # 1006 — indistinguishable from the server dying mid-stream.
         await websocket.close()
 
-    except (WebSocketDisconnect, ConnectionClosed, RuntimeError):
-        print("Client disconnected from the stream.")
+    except (WebSocketDisconnect, ConnectionClosed, RuntimeError, AssertionError):
+        # AssertionError can surface from the underlying websockets library when
+        # a close frame is written concurrently with a pending drain waiter.
+        # This is a harmless race condition on disconnect — safe to swallow.
+        pass
 
 
 import logo
@@ -1359,6 +1372,8 @@ if __name__ == "__main__":
             "host": args.host,
             "port": args.port,
             "log_level": "warning",
+            "ws_ping_interval": None,
+            "ws_ping_timeout": None,
         },
         daemon=True
     )

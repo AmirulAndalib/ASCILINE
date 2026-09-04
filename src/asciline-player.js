@@ -222,6 +222,9 @@ export class AsciiPlayer {
             pixelMode: false,           // Raw pixel mode
             autoplay: false,
             playOverlay: true,          // Auto-create a ▶ play button overlay (set false to manage manually)
+            muteButton: true,           // Auto-create a mute/unmute toggle when audio is enabled
+            clickToPlayPause: true,     // Click video to toggle Play / Pause
+            keyboardShortcuts: true,    // Spacebar to toggle Play / Pause
             bufferSize: 4,
             filters: {
                 contrast: 1.0,
@@ -347,6 +350,38 @@ export class AsciiPlayer {
             this._createPlayOverlay();
         }
 
+        // Build the mute/unmute toggle button if enabled
+        if (this.options.muteButton && this.audioEl) {
+            this._createMuteButton();
+        }
+
+        // Click on video to toggle Play / Pause
+        if (this.options.clickToPlayPause !== false && this.container) {
+            this._containerClickHandler = (e) => {
+                if (e.target.closest('.ascii-mute-btn') || e.target.closest('.ascii-play-overlay') || e.target.closest('.ascii-pause-overlay')) {
+                    return;
+                }
+                if (window.getSelection && window.getSelection().toString().trim().length > 0) {
+                    return;
+                }
+                this.togglePlay();
+            };
+            this.container.addEventListener('click', this._containerClickHandler);
+        }
+
+        // Keyboard Spacebar to toggle Play / Pause
+        if (this.options.keyboardShortcuts !== false) {
+            this._keydownHandler = (e) => {
+                if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    if (this.state === 'PLAYING' || this.state === 'PAUSED') {
+                        e.preventDefault();
+                        this.togglePlay();
+                    }
+                }
+            };
+            window.addEventListener('keydown', this._keydownHandler);
+        }
+
         if (this.options.autoplay) {
             this.play();
         }
@@ -395,6 +430,23 @@ export class AsciiPlayer {
         if (this.state !== 'IDLE' && this.state !== 'ENDED' && this.state !== 'ERROR') return;
         this._hidePlayOverlay();
         this._setState('CONNECTING');
+
+        // Unlock audio context while we're inside a user-gesture call stack.
+        // Browsers require audio.play() to be called synchronously from a user
+        // gesture (click, tap, keydown). By the time the first INIT frame arrives
+        // over WebSocket (~200 ms later), the gesture context is already gone.
+        // Calling play() here — even on an empty src — permanently marks the
+        // page as audio-allowed, so the real play() inside _triggerPlaybackStart
+        // will succeed without being blocked by autoplay policy.
+        if (this.audioEl && !this._audioUnlocked) {
+            this.audioEl.play().then(() => {
+                this._audioUnlocked = true;
+            }).catch(() => {
+                // Even a rejection still unlocks audio on most browsers.
+                this._audioUnlocked = true;
+            });
+        }
+
         this._connectWebSocket();
     }
 
@@ -409,12 +461,14 @@ export class AsciiPlayer {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({ type: 'pause', paused: true }));
         }
+        this._showPauseOverlay();
     }
 
     resume() {
         if (this.state !== 'PAUSED') return;
         this._setState('PLAYING');
         this.readyToRender = true;
+        this._hidePauseOverlay();
 
         const pauseDuration = performance.now() - this.pauseStartTime;
         this.streamStartTime += pauseDuration;
@@ -424,7 +478,10 @@ export class AsciiPlayer {
             this.ws.send(JSON.stringify({ type: 'pause', paused: false }));
         }
 
-        if (this.audioEl && this.audioEl.paused) {
+        // Always call play() even when muted — the audio element's currentTime
+        // is the master clock for video sync. If we don't call play() it stays
+        // frozen and the render loop never advances frames.
+        if (this.audioEl && this.audioEl.paused && !this._audioGated) {
             this.audioEl.play().catch(() => {});
         }
 
@@ -504,12 +561,20 @@ export class AsciiPlayer {
         if (this.audioEl) this.audioEl.volume = vol;
     }
 
+    mute() {
+        if (!this.audioEl) return;
+        this.audioEl.muted = true;
+        this._updateMuteButton();
+    }
+
     async unmute() {
         if (!this.audioEl) return;
         // If video has been running on wall-clock while audio was blocked,
         // seek the audio stream to the current video position so they sync up instantly.
-        if (this._audioGated && this.audioEl.paused && this.readyToRender && !this.isWebcamStream) {
-            const currentSec = (performance.now() - this.streamStartTime) / 1000.0;
+        if (this._audioGated && this.readyToRender && !this.isWebcamStream) {
+            const currentSec = (this.state === 'PAUSED' && this.pauseStartTime)
+                ? (this.pauseStartTime - this.streamStartTime) / 1000.0
+                : (performance.now() - this.streamStartTime) / 1000.0;
             if (currentSec > 0.5) {
                 this.audioOffset = currentSec;
                 this.audioEl.src = this._getAudioUrl(
@@ -520,29 +585,34 @@ export class AsciiPlayer {
         }
         this._audioGated = false;
         this.audioEl.muted = false;
-        return this.audioEl.play();
+        this._updateMuteButton();
+
+        // If the player is currently PAUSED, we must NOT start playing audio!
+        // Audio will start synchronously when resume() is called.
+        if (this.state === 'PLAYING') {
+            const playPromise = this.audioEl.play();
+            if (playPromise) {
+                playPromise.then(() => this._updateMuteButton()).catch(() => {});
+            }
+            return playPromise;
+        } else {
+            this.audioEl.pause();
+            return Promise.resolve();
+        }
     }
 
     getMasterClock() {
         // Audio is the master clock as long as it has loaded metadata (readyState >= 1).
-        // This matches the original app.js logic from before SDK extraction:
-        //   - When playing: audioEl.currentTime advances → video follows
-        //   - When paused:  audioEl.currentTime is frozen → video correctly stays put
-        //   - After seek:   audioEl.currentTime reflects the new position immediately
-        //   - Initial load: readyState rises to 1 (HAVE_METADATA) once src+load() completes
-        //
-        // The only case we want wall-clock is when audio hasn't loaded at all (readyState 0)
-        // AND audio is paused AND currentTime is 0 — i.e. audio blocked by autoplay policy
-        // before any data has arrived. We detect this with the _audioGated flag set in
-        // _triggerPlaybackStart when audio.play() is rejected by the browser.
         if (this.audioEl && this.audioEl.readyState >= 1) {
             if (this._audioGated && this.audioEl.paused && this.audioEl.currentTime === 0) {
                 // Autoplay blocked: run on wall-clock so video doesn't freeze
-                return (performance.now() - this.streamStartTime) / 1000.0;
+                const now = (this.state === 'PAUSED' && this.pauseStartTime) ? this.pauseStartTime : performance.now();
+                return (now - this.streamStartTime) / 1000.0;
             }
             return this.audioEl.currentTime + this.audioOffset;
         }
-        return (performance.now() - this.streamStartTime) / 1000.0;
+        const now = (this.state === 'PAUSED' && this.pauseStartTime) ? this.pauseStartTime : performance.now();
+        return (now - this.streamStartTime) / 1000.0;
     }
 
     setFilters(filters) {
@@ -644,11 +714,189 @@ export class AsciiPlayer {
         if (!this._playOverlay) return;
         this._playOverlay.remove();
         this._playOverlay = null;
+        if (this._muteBtn) {
+            this._muteBtn.style.display = 'flex';
+        }
+    }
+
+    // ── PAUSE OVERLAY (Minimalist Center Indicator) ──
+
+    _showPauseOverlay() {
+        if (this._pauseOverlay) {
+            this._pauseOverlay.style.display = 'flex';
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'ascii-pause-overlay';
+        overlay.style.cssText = [
+            'position:absolute', 'inset:0', 'display:flex',
+            'align-items:center', 'justify-content:center',
+            'cursor:pointer', 'z-index:15',
+            'background:rgba(0,0,0,0.38)',
+            'backdrop-filter:blur(3px)',
+            '-webkit-backdrop-filter:blur(3px)',
+            'transition:opacity 0.15s ease',
+        ].join(';');
+
+        const btn = document.createElement('div');
+        btn.className = 'ascii-pause-btn';
+        btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="#ffffff" style="margin-left:3px;display:block;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+        btn.style.cssText = [
+            'width:64px', 'height:64px', 'border-radius:50%',
+            'background:rgba(20,20,20,0.68)',
+            'border:2px solid rgba(255,255,255,0.65)',
+            'display:flex', 'align-items:center', 'justify-content:center',
+            'pointer-events:none',
+            'box-shadow:0 6px 20px rgba(0,0,0,0.6)',
+            'transition:transform 0.1s ease, background 0.1s ease',
+            'backdrop-filter:blur(8px)',
+            '-webkit-backdrop-filter:blur(8px)',
+        ].join(';');
+
+        overlay.addEventListener('mouseenter', () => {
+            btn.style.background = 'rgba(30,30,30,0.88)';
+            btn.style.transform = 'scale(1.08)';
+        });
+        overlay.addEventListener('mouseleave', () => {
+            btn.style.background = 'rgba(20,20,20,0.68)';
+            btn.style.transform = 'scale(1)';
+        });
+
+        overlay.appendChild(btn);
+        overlay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.resume();
+        });
+
+        if (getComputedStyle(this.container).position === 'static') {
+            this.container.style.position = 'relative';
+        }
+
+        this.container.appendChild(overlay);
+        this._pauseOverlay = overlay;
+    }
+
+    _hidePauseOverlay() {
+        if (!this._pauseOverlay) return;
+        this._pauseOverlay.style.display = 'none';
+    }
+
+    _removePauseOverlay() {
+        if (!this._pauseOverlay) return;
+        this._pauseOverlay.remove();
+        this._pauseOverlay = null;
+    }
+
+    // ── MUTE BUTTON (Sleek Video Player Vector UI) ──
+
+    _createMuteButton() {
+        if (this._muteBtn) return;
+        if (!this.options.muteButton || !this.audioEl) return;
+
+        const SVG_MUTED = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+        const SVG_UNMUTED = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
+
+        this._svgMuted = SVG_MUTED;
+        this._svgUnmuted = SVG_UNMUTED;
+
+        const btn = document.createElement('button');
+        btn.className = 'ascii-mute-btn';
+        btn.setAttribute('aria-label', 'Unmute');
+        btn.innerHTML = SVG_MUTED;
+        btn.style.cssText = [
+            'position:absolute',
+            'bottom:20px',
+            'right:20px',
+            'z-index:9999',
+            'width:40px',
+            'height:40px',
+            'border-radius:50%',
+            'border:1px solid rgba(255,255,255,0.2)',
+            'background:rgba(18,18,18,0.72)',
+            'color:#ffffff',
+            'display:' + (this._playOverlay ? 'none' : 'flex'),
+            'align-items:center',
+            'justify-content:center',
+            'cursor:pointer',
+            'user-select:none',
+            '-webkit-user-select:none',
+            'transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease',
+            'backdrop-filter:blur(8px)',
+            '-webkit-backdrop-filter:blur(8px)',
+            'box-shadow:0 4px 14px rgba(0,0,0,0.5)',
+            'padding:0',
+            'outline:none',
+        ].join(';');
+
+        btn.addEventListener('mouseenter', () => {
+            btn.style.background = 'rgba(30,30,30,0.92)';
+            btn.style.borderColor = 'rgba(255,255,255,0.4)';
+            btn.style.transform = 'scale(1.08)';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.background = 'rgba(18,18,18,0.72)';
+            btn.style.borderColor = 'rgba(255,255,255,0.2)';
+            btn.style.transform = 'scale(1)';
+        });
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!this.audioEl) return;
+            const isMuted = Boolean(
+                this._audioGated ||
+                this.audioEl.muted ||
+                this.audioEl.volume === 0
+            );
+            if (isMuted) {
+                this.unmute().catch(() => {});
+            } else {
+                this.mute();
+            }
+        });
+
+        // Ensure container is positioned
+        if (getComputedStyle(this.container).position === 'static') {
+            this.container.style.position = 'relative';
+        }
+
+        this.container.appendChild(btn);
+        this._muteBtn = btn;
+        this._updateMuteButton();
+    }
+
+    _updateMuteButton() {
+        if (!this._muteBtn) return;
+        const isMuted = Boolean(
+            this._audioGated ||
+            !this.audioEl ||
+            this.audioEl.muted ||
+            this.audioEl.volume === 0
+        );
+        this._muteBtn.innerHTML = isMuted ? this._svgMuted : this._svgUnmuted;
+        this._muteBtn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+    }
+
+    _removeMuteButton() {
+        if (!this._muteBtn) return;
+        this._muteBtn.remove();
+        this._muteBtn = null;
     }
 
     destroy() {
         this._hidePlayOverlay();
+        this._removePauseOverlay();
+        this._removeMuteButton();
         this._stopBufferReports();
+        if (this._containerClickHandler && this.container) {
+            this.container.removeEventListener('click', this._containerClickHandler);
+            this._containerClickHandler = null;
+        }
+        if (this._keydownHandler) {
+            window.removeEventListener('keydown', this._keydownHandler);
+            this._keydownHandler = null;
+        }
         window.removeEventListener('resize', this._resizeBound);
         if (this.ws) {
             this.ws.onclose = null;
@@ -692,6 +940,12 @@ export class AsciiPlayer {
         if (!wsUrl || wsUrl === 'auto') {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${location.host}/ws?codec=adaptive`;
+        }
+        // Auto-append ?codec=adaptive if the caller didn't specify it.
+        // Without this flag the server sends untagged binary frames that the
+        // inlined decoder cannot parse, resulting in a silent black screen.
+        if (!wsUrl.includes('codec=')) {
+            wsUrl += (wsUrl.includes('?') ? '&' : '?') + 'codec=adaptive';
         }
         this.resolvedWsUrl = wsUrl;
 
@@ -830,8 +1084,12 @@ export class AsciiPlayer {
                 this._beginRendering();
             }
         }).catch(() => {
-            // Autoplay blocked — set flag so getMasterClock uses wall-clock
+            // Autoplay blocked — set flag so getMasterClock uses wall-clock.
+            // Video plays freely on wall-clock. Show the Instagram-style mute button
+            // so the user gets a clear, visible affordance to enable audio.
             this._audioGated = true;
+            this._createMuteButton();
+            this._updateMuteButton();
             if (epochToMatch === this.streamEpoch && !this.readyToRender) {
                 this._beginRendering();
             }
@@ -910,6 +1168,9 @@ export class AsciiPlayer {
         }
 
         this.resize();
+        if (this.options.muteButton && this.audioEl && !this.isWebcamStream) {
+            this._createMuteButton();
+        }
     }
 
     resize() {
@@ -1070,6 +1331,7 @@ export class AsciiPlayer {
         }
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.canvas.style.display = 'none';
+        this._hidePauseOverlay();
         if (this.selectionLayer) {
             this.selectionLayer.textContent = '';
             this.selectionLayer.style.display = 'none';
