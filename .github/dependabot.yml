@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # ── Python / pip Dependencies (Only yt-dlp) ─────────────────
+  # Tracks only yt-dlp for rapid YouTube extractor updates.
+  # Core dependencies (numpy, opencv, fastapi) are left stable and untouched.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    allow:
+      - dependency-name: "yt-dlp"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ytdlp"
+
+  # ── GitHub Actions Workflows ────────────────────────────────
+  # Keeps actions like actions/checkout and actions/setup-python stable and secure.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"

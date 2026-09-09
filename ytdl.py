@@ -124,7 +124,8 @@ def _probe_remote(url: str) -> tuple[str, bool]:
     res = _ytdlp("--no-playlist", "--print", "id", "--print", "is_live", url,
                  timeout=_PROBE_TIMEOUT)
     if res.returncode != 0 or not res.stdout.strip():
-        raise RuntimeError(f"yt-dlp could not read {url!r}: {res.stderr.strip()[:200]}")
+        err = res.stderr.strip()[:200]
+        raise RuntimeError(f"yt-dlp could not read {url!r}: {err} (Try updating yt-dlp: pip install -U yt-dlp)")
     lines = res.stdout.strip().splitlines()
     video_id = lines[0].strip()
     is_live = len(lines) > 1 and lines[1].strip().lower() == "true"
@@ -180,7 +181,8 @@ def download(url: str, cache_dir: str = "videos", cache_limit: int = 10 * 1024**
         res = _ytdlp("--no-playlist", "-f", fmt,
                      "--merge-output-format", "mp4", "-o", tmp, url)
         if res.returncode != 0 or not os.path.exists(tmp):
-            raise RuntimeError(f"yt-dlp download failed: {res.stderr.strip()[-300:]}")
+            err = res.stderr.strip()[-300:]
+            raise RuntimeError(f"yt-dlp download failed: {err} (Try updating yt-dlp: pip install -U yt-dlp)")
         normalize(tmp)
         os.replace(tmp, out)        # atomic finalize
     except BaseException:
