@@ -639,7 +639,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Only URL entries reach here; a resolved/cached local path is
                 # written back to entry["video"] above, so the client only sees
                 # this when a download/normalize actually has to run.
-                await websocket.send_text("STATUS:FETCHING_YT:Fetching YouTube stream...")
+                await websocket.send_text("STATUS:FETCHING_YT:Fetching stream (yt-dlp)...")
                 try:
                     video_path = await safe_resolve_video_path(video_path)
                     entry["video"] = video_path
