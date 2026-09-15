@@ -391,6 +391,25 @@ async def root():
     return HTMLResponse(get_html_content())
 
 
+@app.get("/health")
+async def health():
+    """Report HTTP server liveness without accessing video or decoder state."""
+    return {"status": "ok"}
+
+
+@app.get("/info")
+async def info():
+    """Return server metadata; rendering modes belong to individual sessions."""
+    return {
+        "queue_size": len(getattr(app.state, "queue", [])),
+        "current_index": getattr(app.state, "current_index", 0),
+        "cols": getattr(app.state, "cols", 0),
+        "rows": getattr(app.state, "rows", 0),
+        "loop": getattr(app.state, "loop", False),
+        "debug": getattr(app.state, "debug", False),
+    }
+
+
 @app.get("/audio")
 async def audio_stream(v: int | None = None, start: float = 0.0):
     """
