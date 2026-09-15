@@ -335,6 +335,35 @@ docker run -p 8000:8000 -v $(pwd)/videos:/app/videos asciline --folder videos --
 
 > **YouTube/URL playback in Docker:** the image installs from `requirements.txt` only, so `yt-dlp` is **not** included by default. To enable URL playback inside the container, add `RUN pip install ".[ytdlp]"` (or `pip install yt-dlp`) to the `Dockerfile` before building, or install it in a custom layer on top of the base image.
 
+### Health checks
+
+`GET /health` returns HTTP 200 with `{"status":"ok"}` when the HTTP server is
+responsive. It does not open a WebSocket, access videos, or decode frames.
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+The Docker image checks this endpoint on container port 8000 every 30 seconds
+using Python's standard library. Check the container's health status with
+`docker compose ps`; a running server should report `healthy` after a successful
+check. If you change the server's internal port, update the health check URL too.
+
+### Server information
+
+`GET /info` returns a JSON snapshot of server metadata:
+
+```json
+{"queue_size":1,"current_index":0,"cols":200,"rows":0,"loop":false,"debug":false}
+```
+
+`current_index` is zero-based. `cols` and `rows` describe the server's configured
+grid, with `rows: 0` meaning automatic sizing; individual sessions can use
+different dimensions. If the app is imported without CLI initialization,
+numeric fields default to 0 and flags to false. Pixel mode is scoped to each
+WebSocket session and is not included. The endpoint reads existing server
+state without opening videos or decoding frames.
+
 ## Customization
 
 ### Styling
